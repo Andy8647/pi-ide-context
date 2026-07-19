@@ -1,0 +1,11 @@
+{
+  "name": "pi-ide-context",
+  "version": "0.1.0",
+  "description": "Auto-inject Neovim/VSCode editor context into pi messages",
+  "keywords": ["pi-package"],
+  "author": "Andy",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}
