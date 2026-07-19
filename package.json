@@ -1,10 +1,14 @@
 {
   "name": "pi-ide-context",
-  "version": "0.1.0",
-  "description": "Auto-inject Neovim/VSCode editor context into pi messages",
-  "keywords": ["pi-package"],
-  "author": "Andy",
+  "version": "0.1.1",
+  "description": "/ide for pi — connect Neovim/VS Code, auto-inject editor context into LLM messages",
+  "keywords": ["pi-package", "pi-extension", "neovim", "ide", "editor-context"],
+  "author": "Andy8647",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Andy8647/pi-ide-context"
+  },
   "pi": {
     "extensions": ["./src/index.ts"]
   }

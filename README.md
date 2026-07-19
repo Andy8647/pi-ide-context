@@ -1,50 +1,78 @@
 # pi-ide-context
 
-自动将 Neovim / VS Code 的编辑器状态注入到 pi 消息中。
+> `/ide` for pi — like Claude Code's IDE integration, but for Neovim and VS Code.
 
-在编辑器里选中一段代码、切到 pi 发消息，pi 自动知道你在哪个文件、光标在哪、选中了什么。
+[![npm version](https://img.shields.io/npm/v/pi-ide-context)](https://www.npmjs.com/package/pi-ide-context)
+[![GitHub](https://img.shields.io/badge/github-Andy8647/pi--ide--context-blue)](https://github.com/Andy8647/pi-ide-context)
 
-## 安装
+Select text in Neovim, switch to pi — pi already knows which file you're in, where your cursor is, and what you selected. No copy-paste. No `:PiAsk`. It just works.
 
-### Pi 扩展
+## Install
+
+### Pi extension
 
 ```bash
-pi install git:github.com/andy/pi-ide-context
-# 或本地开发
-pi install ~/Projects/fork/pi/pi-ide-context
+pi install npm:pi-ide-context
 ```
 
-然后在 pi 里 `/reload`。
+Then `/reload` in pi.
 
-### Neovim 插件 (lazy.nvim)
+### Neovim plugin (lazy.nvim)
 
 ```lua
 {
-  "andy/pi-ide-context",
-  -- 自动启动，无需额外配置
-  -- 可选：手动设置
-  -- opts = {}
+  "Andy8647/pi-ide-context",
+  lazy = false,
 }
 ```
 
-## 工作原理
+## Usage
 
 ```
-┌───────────┐  写 JSON    ┌──────────────┐  读 JSON    ┌────────┐
-│  Neovim   │ ──────────► │ /tmp/pi-ide/ │ ◄────────── │   pi   │
-│  autocmd  │  每 300ms   │  <pid>.json  │  before_    │  auto  │
-│  hooks    │             │              │  agent_     │ inject │
-└───────────┘             └──────────────┘  start      └────────┘
+pi starts → widget shows · main.ts (detected, not connected)
+  ↓
+/ide → pick editor from list → connected
+  ↓
+widget shows ▸ main.ts → LLM receives editor context automatically
+  ↓
+/ide off → disconnect
 ```
 
-- Neovim 端：autocmd 监听 CursorMoved / TextChanged / BufEnter 等事件，去抖动写入状态 JSON
-- Pi 端：`before_agent_start` hook 读取 JSON，匹配 cwd，格式化为 LLM 上下文注入
-- 匹配策略：精确 cwd → 子目录前缀 → 最新文件
-- 过期处理：>30s 未更新的文件视为过期，优先用未过期的
+When connected, every message you send to pi automatically includes:
 
-## 协议
+```
+### IDE Context
+- File: /Users/andy/my-project/src/main.ts
+- Language: typescript
+- Cursor: line 42, column 10
+- Buffer: 200 lines (modified)
+- Selection: lines 40–45
+  ```typescript
+  const foo = bar();
+  // ...
+  ```
+```
 
-状态文件格式 (`/tmp/pi-ide/<pid>.json`)：
+## How it works
+
+```
+┌──────────┐  writes JSON   ┌──────────────┐  reads JSON   ┌────────┐
+│  Neovim  │ ─────────────► │ /tmp/pi-ide/ │ ◄──────────── │   pi   │
+│ autocmd  │  debounced     │  <pid>.json  │  before_      │  auto  │
+│  hooks   │  every 200ms   │              │  agent_start  │ inject │
+└──────────┘                └──────────────┘               └────────┘
+```
+
+**Neovim side**: autocmd on CursorMoved / TextChanged / BufEnter / ModeChanged writes
+editor state to a JSON file. Zero dependencies — a single Lua file.
+
+**Pi side**: `before_agent_start` hook reads the JSON, matches by cwd, and injects
+formatted editor context. A `setInterval` widget shows live file/selection info below
+the input area.
+
+## Protocol
+
+Editor state is written to `/tmp/pi-ide/<pid>.json`:
 
 ```json
 {
@@ -67,10 +95,9 @@ pi install ~/Projects/fork/pi/pi-ide-context
 }
 ```
 
-VS Code 端也可以写相同格式的文件到同一目录，pi 扩展无需修改。
+Same protocol works for VS Code — just write the same JSON format. The pi extension
+needs zero changes.
 
-## TODO
+## License
 
-- [ ] VS Code 扩展（写协议文件）
-- [ ] 多编辑器同时打开时的优先级处理
-- [ ] 项目级 `.pi-ide-ignore` 排除敏感文件
+MIT
