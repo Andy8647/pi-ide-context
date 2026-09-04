@@ -1,2 +1,7 @@
 node_modules/
 *.log
+editors/vscode/dist/
+editors/obsidian/main.js
+*.vsix
+
+.DS_Store

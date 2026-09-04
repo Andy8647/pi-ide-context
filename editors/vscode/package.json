@@ -1,0 +1,35 @@
+{
+	"name": "pi-ide-context-vscode",
+	"displayName": "pi-ide-context",
+	"description": "Share your VS Code file, cursor and selection with pi — auto-injected editor context",
+	"version": "0.1.0",
+	"publisher": "AndyLuo",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Andy8647/pi-ide-context"
+	},
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"main": "./dist/extension.js",
+	"scripts": {
+		"build": "node esbuild.config.mjs",
+		"typecheck": "tsc --noEmit",
+		"verify": "npm run typecheck",
+		"vscode:prepublish": "npm run build",
+		"package": "npx @vscode/vsce package"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"@types/vscode": "^1.85.0",
+		"esbuild": "^0.24.0",
+		"typescript": "^5.6.0"
+	}
+}

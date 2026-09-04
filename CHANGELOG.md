@@ -9,6 +9,29 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [Unreleased]
+
+### Added
+
+- **VS Code client** (`editors/vscode/`) — writes the same protocol v0.2 JSON
+  (`app: "vscode"`, `process.pid`, workspace root as `cwd`, `workspace.name` as
+  the `argv` fingerprint). Selection `selected_at` is stamped when the selection
+  becomes non-empty; a restored-from-session selection reports `selected_at:
+  null` (treated stale, per protocol).
+- **Obsidian client** (`editors/obsidian/`) — same JSON (`app: "obsidian"`,
+  vault root as `cwd`, vault name as `argv`, vault-relative `file`, CM6
+  line/character offsets). Uses `EditorView.updateListener` to stamp
+  `selected_at` on non-empty selections (Obsidian's `editor-change` only fires
+  on content edits). Cleanup on quit goes through `Workspace.on("quit")` —
+  `onunload` is not reliably called on OS quit.
+- **Shared client module** (`editors/shared/protocol.ts`) — the editor-agnostic
+  schema types + state-file I/O (state dir 0700, atomic tmp-then-rename write,
+  removal), now that two editor clients exist. Keeps the two from drifting.
+
+### Changed
+
+- Root `npm run verify` now also typechecks both editor clients; CI builds them.
+
 ## [0.2.0] - 2026-09-03
 
 Claude Code-style editor context with a real freshness model.

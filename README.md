@@ -1,11 +1,13 @@
 # pi-ide-context
 
-> `/ide` for pi — like Claude Code's IDE integration, but for Neovim and VS Code.
+> `/ide` for pi — like Claude Code's IDE integration, but for Neovim, VS Code and Obsidian.
 
 [![npm version](https://img.shields.io/npm/v/pi-ide-context)](https://www.npmjs.com/package/pi-ide-context)
 [![GitHub](https://img.shields.io/badge/github-Andy8647/pi--ide--context-blue)](https://github.com/Andy8647/pi-ide-context)
 
-Select text in Neovim, switch to pi — pi already knows which file you're in, where your cursor is, and what you selected. No copy-paste. No `:PiAsk`. It just works.
+Select text in Neovim (or VS Code / Obsidian), switch to pi — pi already knows which
+file you're in, where your cursor is, and what you selected. No copy-paste. No
+`:PiAsk`. It just works.
 
 ## Install
 
@@ -25,6 +27,29 @@ Then `/reload` in pi.
   lazy = false,
 }
 ```
+
+### VS Code extension
+
+Not published to the marketplace yet — build and install locally:
+
+```bash
+cd editors/vscode
+npm install && npm run build
+code --extensionDevelopmentPath="$PWD"   # dev instance, or package + install a vsix
+```
+
+### Obsidian plugin
+
+Not in the community plugin directory yet — build and copy into a vault:
+
+```bash
+cd editors/obsidian
+npm install && npm run build
+mkdir -p "<vault>/.obsidian/plugins/pi-ide-context"
+cp main.js manifest.json "<vault>/.obsidian/plugins/pi-ide-context/"
+```
+
+Then enable **pi-ide-context** under Settings → Community plugins.
 
 ## Usage
 
@@ -111,8 +136,9 @@ Editor state is written to `/tmp/pi-ide/<pid>.json`:
 ```
 
 Columns are 1-based. `selected_at` drives the freshness window (60s on the pi
-side). The same protocol works for VS Code / Obsidian — just write this JSON.
-The pi extension is editor-agnostic; only the nvim client is implemented so far.
+side). The same protocol works for VS Code / Obsidian — just write this JSON. The pi
+extension is editor-agnostic; all three clients (Neovim, VS Code, Obsidian)
+write it. See `editors/` for the VS Code and Obsidian clients.
 
 ## License
 

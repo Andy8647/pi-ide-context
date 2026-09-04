@@ -27,8 +27,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install editor client dependencies
+        run: |
+          npm ci --prefix editors/vscode
+          npm ci --prefix editors/obsidian
+
       - name: Verify
         run: npm run verify
+
+      - name: Build editor clients
+        run: |
+          npm run build --prefix editors/vscode
+          npm run build --prefix editors/obsidian
 
       - name: Dry-run pack
         run: npm run pack:check

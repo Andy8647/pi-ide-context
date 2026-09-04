@@ -1,0 +1,20 @@
+{
+	"name": "pi-ide-context-obsidian",
+	"version": "0.1.0",
+	"description": "Obsidian plugin: share open note, cursor and selection with pi",
+	"main": "main.js",
+	"license": "MIT",
+	"scripts": {
+		"build": "node esbuild.config.mjs",
+		"typecheck": "tsc --noEmit",
+		"verify": "npm run typecheck"
+	},
+	"devDependencies": {
+		"@codemirror/state": "6.5.0",
+		"@codemirror/view": "6.38.6",
+		"@types/node": "^22.0.0",
+		"esbuild": "^0.24.0",
+		"obsidian": "^1.7.0",
+		"typescript": "^5.6.0"
+	}
+}

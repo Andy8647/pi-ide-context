@@ -1,0 +1,62 @@
+name: Publish Obsidian plugin
+run-name: Publish Obsidian plugin ${{ github.ref_name }}
+
+# Obsidian 没有 registry:每次发版 = 一个 GitHub Release,携带 main.js + manifest.json。
+# Obsidian 按 manifest.json 的 version 去找同名 tag 的 release,所以 tag 必须无 v 前缀、
+# 精确等于 version。pi 扩展用 v*.*.*(带 v),这里的 [0-9]*.* 不会和它撞。
+on:
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
+
+# 和 npm publish 一样:半成品 release 比等待更糟,别并发取消。
+concurrency:
+  group: publish-obsidian
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci --prefix editors/obsidian
+
+      - name: Verify
+        run: npm run verify --prefix editors/obsidian
+
+      # Obsidian 按 tag == manifest version 找 release,错了用户装不上/更新不了。发布前拦下。
+      - name: Check tag matches manifest version
+        run: |
+          VERSION=$(node -p "require('./editors/obsidian/manifest.json').version")
+          TAG="${GITHUB_REF_NAME}"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::Tag ${TAG} does not match editors/obsidian/manifest.json version ${VERSION}. Delete the tag, fix the version, retag."
+            exit 1
+          fi
+          echo "Tag ${TAG} matches manifest.json version ${VERSION}."
+
+      - name: Build
+        run: npm run build --prefix editors/obsidian
+
+      # 资产文件名必须是 main.js / manifest.json(Obsidian 按固定文件名下载)。
+      - name: Create GitHub release with plugin assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            editors/obsidian/main.js \
+            editors/obsidian/manifest.json \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

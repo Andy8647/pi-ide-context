@@ -30,9 +30,11 @@
 	"scripts": {
 		"lint": "biome check .",
 		"typecheck": "tsc --noEmit",
+		"typecheck:vscode": "cd editors/vscode && npm run typecheck",
+		"typecheck:obsidian": "cd editors/obsidian && npm run typecheck",
 		"fmt": "biome format --write .",
 		"fmt:check": "biome format --check .",
-		"verify": "npm run lint && npm run typecheck",
+		"verify": "npm run lint && npm run typecheck && npm run typecheck:vscode && npm run typecheck:obsidian",
 		"pack:check": "npm pack --dry-run",
 		"prepublishOnly": "npm run verify && npm run pack:check"
 	},

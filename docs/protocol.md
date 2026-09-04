@@ -130,8 +130,9 @@ the name is too long.
   cannot be told apart automatically. The `/ide` picker shows each instance's
   `argv` (launch args — a stable fingerprint) plus how long ago it was active
   (`timestamp`); touch the target editor, then pick the top entry.
-- VS Code / Obsidian clients are not implemented yet. They only need to write
-  this JSON — the pi extension is editor-agnostic.
+- VS Code and Obsidian clients write this same JSON (see `editors/vscode/` and
+  `editors/obsidian/`). The pi extension is editor-agnostic — it reads whatever
+  editor wrote the file and never asks which one.
 
 ## Changelog
 
