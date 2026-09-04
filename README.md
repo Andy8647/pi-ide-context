@@ -29,13 +29,15 @@ Then `/reload` in pi.
 ## Usage
 
 ```
-pi starts → widget shows · main.ts (detected, not connected)
+pi starts in a project where nvim is running
   ↓
-/ide → pick editor from list → connected
+auto-connects to the single live nvim for this cwd — widget shows `in main.ts`
   ↓
-widget shows ▸ main.ts → LLM receives editor context automatically
+select lines in nvim → widget shows `5 lines selected in main.ts`
   ↓
-/ide off → disconnect
+ask pi → context injected automatically (selection fresh for 60s)
+  ↓
+/ide off → disconnect; new sessions auto-connect again
 ```
 
 When connected, every message you send to pi automatically includes:
@@ -53,6 +55,12 @@ When connected, every message you send to pi automatically includes:
   ```
 ```
 
+Selection text is injected only while fresh (within 60s of making it); after
+that the file/cursor context is still sent but the selection text is not — same
+as Claude Code's chip disappearing. Widget text is pure ASCII (no Nerd Font
+needed). If several nvim instances share this cwd, `/ide` lists them by launch
+args (`nvim pi/` vs `nvim pi-ide-context/`) so you can pick the right one.
+
 ## How it works
 
 ```
@@ -64,11 +72,15 @@ When connected, every message you send to pi automatically includes:
 ```
 
 **Neovim side**: autocmd on CursorMoved / TextChanged / BufEnter / ModeChanged writes
-editor state to a JSON file. Zero dependencies — a single Lua file.
+editor state to a JSON file. Zero dependencies — a single Lua file. Sends its launch
+args (`argv`) so same-cwd instances can be told apart.
 
-**Pi side**: `before_agent_start` hook reads the JSON, matches by cwd, and injects
-formatted editor context. A `setInterval` widget shows live file/selection info below
-the input area.
+**Pi side**: `before_agent_start` reads the JSON for the connected editor and injects
+formatted editor context (lightweight file/cursor/buffer every time; selection text
+only while fresh). Auto-connects to a unique live nvim for this cwd, shows a widget
+below the editor, and a `/ide` command for manual pick / off.
+
+Full protocol in [`docs/protocol.md`](docs/protocol.md).
 
 ## Protocol
 
@@ -79,15 +91,18 @@ Editor state is written to `/tmp/pi-ide/<pid>.json`:
   "pid": 12345,
   "cwd": "/Users/andy/my-project",
   "timestamp": 1700000000,
+  "app": "nvim",
+  "argv": ["pi-ide-context/"],
   "active_buffer": {
     "file": "/Users/andy/my-project/src/main.ts",
     "name": "main.ts",
     "language": "typescript",
     "cursor": { "line": 42, "column": 10 },
     "selection": {
-      "start": { "line": 40, "column": 0 },
+      "start": { "line": 40, "column": 1 },
       "end": { "line": 45, "column": 20 },
-      "text": "selected code here..."
+      "text": "selected code here...",
+      "selected_at": 1700000000
     },
     "modified": false,
     "lines_total": 200
@@ -95,8 +110,9 @@ Editor state is written to `/tmp/pi-ide/<pid>.json`:
 }
 ```
 
-Same protocol works for VS Code — just write the same JSON format. The pi extension
-needs zero changes.
+Columns are 1-based. `selected_at` drives the freshness window (60s on the pi
+side). The same protocol works for VS Code / Obsidian — just write this JSON.
+The pi extension is editor-agnostic; only the nvim client is implemented so far.
 
 ## License
 
