@@ -107,10 +107,7 @@ function pidAlive(pid: number): boolean {
 }
 
 function isFreshSelection(sel: Selection, nowSec = Date.now() / 1000): boolean {
-	return (
-		typeof sel.selected_at === "number" &&
-		nowSec - sel.selected_at <= SELECTION_FRESH_SECONDS
-	);
+	return typeof sel.selected_at === "number" && nowSec - sel.selected_at <= SELECTION_FRESH_SECONDS;
 }
 
 /** 相对时间(用于 /ide 列表区分哪个实例刚动过) */
@@ -126,8 +123,7 @@ function relTime(timestampSec: number, nowSec = Date.now() / 1000): string {
 /** 启动参数展示(截断,无则回退 cwd) */
 function launchLabel(s: EditorState): string {
 	const argv = (s.argv ?? []).join(" ");
-	if (argv.length > 0)
-		return argv.length > 48 ? `${argv.slice(0, 45)}...` : argv;
+	if (argv.length > 0) return argv.length > 48 ? `${argv.slice(0, 45)}...` : argv;
 	return s.cwd;
 }
 
@@ -189,23 +185,16 @@ function formatContext(state: EditorState): string {
 	lines.push(`- **File**: \`${buf.file ?? "[No Name]"}\``);
 	if (buf.language) lines.push(`- **Language**: ${buf.language}`);
 	if (buf.cursor?.line != null) {
-		const col =
-			buf.cursor.column != null ? `, column ${buf.cursor.column}` : "";
+		const col = buf.cursor.column != null ? `, column ${buf.cursor.column}` : "";
 		lines.push(`- **Cursor**: line ${buf.cursor.line}${col}`);
 	}
-	lines.push(
-		`- **Buffer**: ${buf.lines_total} lines${buf.modified ? " (modified)" : ""}`,
-	);
+	lines.push(`- **Buffer**: ${buf.lines_total} lines${buf.modified ? " (modified)" : ""}`);
 
 	const sel = buf.selection;
 	if (sel && isFreshSelection(sel)) {
 		const n = selectedLineCount(sel);
-		const range =
-			n !== null ? `lines ${sel.start.line}-${sel.end.line}` : "selection";
-		const txt =
-			sel.text.length > 2000
-				? `${sel.text.slice(0, 2000)}\n... (truncated)`
-				: sel.text;
+		const range = n !== null ? `lines ${sel.start.line}-${sel.end.line}` : "selection";
+		const txt = sel.text.length > 2000 ? `${sel.text.slice(0, 2000)}\n... (truncated)` : sel.text;
 		lines.push(`- **Selection**: ${range}`);
 		lines.push("");
 		lines.push(`\`\`\`${buf.language ?? ""}`);
@@ -303,10 +292,7 @@ function stopPolling() {
 
 // ---- /ide 命令 ----
 
-async function cmdIde(
-	args: string,
-	ctx: ExtensionCommandContext,
-): Promise<void> {
+async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	// /ide off — 真正断开:清 widget,本 session 不再自动重连
 	if (args === "off" || args === "disconnect") {
 		if (connectedPid === null && !autoConnectSuppressed) {
@@ -321,9 +307,7 @@ async function cmdIde(
 	}
 
 	// /ide — 列出存活 editor,选择连接(或显示当前状态)
-	const live = (await scanLiveStates(ctx.cwd)).sort(
-		(a, b) => b.timestamp - a.timestamp,
-	);
+	const live = (await scanLiveStates(ctx.cwd)).sort((a, b) => b.timestamp - a.timestamp);
 	if (live.length === 0) {
 		ctx.ui.notify(
 			"No running editor found in this project.\nMake sure Neovim with pi-ide is running in this cwd.",
@@ -349,10 +333,7 @@ async function cmdIde(
 		return isCurrent ? `✓ ${cols}` : `  ${cols}`;
 	});
 
-	const choice = await ctx.ui.select(
-		`Select IDE to connect (${live.length} found):`,
-		choices,
-	);
+	const choice = await ctx.ui.select(`Select IDE to connect (${live.length} found):`, choices);
 	if (choice === undefined) return; // 取消
 
 	const idx = choices.indexOf(choice);
@@ -362,10 +343,7 @@ async function cmdIde(
 	autoConnectSuppressed = false;
 	lastWidgetKey = null;
 	const buf = live[idx].active_buffer;
-	ctx.ui.notify(
-		`Connected to ${live[idx].app} (PID ${connectedPid}) — ${buf.name}`,
-		"info",
-	);
+	ctx.ui.notify(`Connected to ${live[idx].app} (PID ${connectedPid}) — ${buf.name}`, "info");
 	// 立即刷新 widget,不必等下一个 tick
 	setWidget(ctx, widgetLine(live[idx]));
 }

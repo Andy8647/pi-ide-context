@@ -1,15 +1,45 @@
 {
-  "name": "pi-ide-context",
-  "version": "0.2.0",
-  "description": "/ide for pi — connect Neovim/VS Code, auto-inject editor context into LLM messages",
-  "keywords": ["pi-package", "pi-extension", "neovim", "ide", "editor-context"],
-  "author": "Andy8647",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Andy8647/pi-ide-context"
-  },
-  "pi": {
-    "extensions": ["./src/index.ts"]
-  }
+	"name": "pi-ide-context",
+	"version": "0.2.0",
+	"description": "/ide for pi — connect Neovim/VS Code, auto-inject editor context into LLM messages",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"neovim",
+		"ide",
+		"editor-context"
+	],
+	"author": "Andy8647",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Andy8647/pi-ide-context"
+	},
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"files": [
+		"src/",
+		"lua/",
+		"plugin/",
+		"docs/",
+		"README.md"
+	],
+	"scripts": {
+		"lint": "biome check .",
+		"typecheck": "tsc --noEmit",
+		"fmt": "biome format --write .",
+		"fmt:check": "biome format --check .",
+		"verify": "npm run lint && npm run typecheck",
+		"pack:check": "npm pack --dry-run",
+		"prepublishOnly": "npm run verify && npm run pack:check"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.0",
+		"@earendil-works/pi-coding-agent": "^0.84.4",
+		"@types/node": "^22.0.0",
+		"typescript": "^5.6.0"
+	}
 }
