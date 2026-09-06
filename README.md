@@ -40,7 +40,11 @@ code --extensionDevelopmentPath="$PWD"   # dev instance, or package + install a 
 
 ### Obsidian plugin
 
-Not in the community plugin directory yet — build and copy into a vault:
+In the community plugin directory — search **pi-ide-context** under Settings →
+Community plugins → Browse, or install from
+[community.obsidian.md/plugins/pi-ide-context](https://community.obsidian.md/plugins/pi-ide-context).
+
+To build from source instead:
 
 ```bash
 cd editors/obsidian
