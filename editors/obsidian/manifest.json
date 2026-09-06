@@ -1,10 +1,10 @@
 {
 	"id": "pi-ide-context",
 	"name": "pi-ide-context",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"minAppVersion": "1.5.0",
 	"description": "Share the open note, cursor and selection in your vault with pi (npm pi-ide-context).",
 	"author": "Andy8647",
-	"authorUrl": "https://github.com/Andy8647/pi-ide-context",
+	"authorUrl": "https://github.com/Andy8647",
 	"isDesktopOnly": true
 }
