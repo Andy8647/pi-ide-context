@@ -47,6 +47,16 @@ jobs:
           fi
           echo "Tag ${TAG} matches manifest.json version ${VERSION}."
 
+      # 社区目录读的是 repo 根的 manifest.json,而插件 manifest 在 editors/obsidian/。
+      # 发版时强制两者一致,避免根 manifest 版本落后导致目录看到旧版本。
+      - name: Check root manifest matches the plugin manifest
+        run: |
+          if ! cmp -s manifest.json editors/obsidian/manifest.json; then
+            echo "::error::Root manifest.json must match editors/obsidian/manifest.json (the community directory reads the root one). Update both."
+            exit 1
+          fi
+          echo "Root manifest.json matches editors/obsidian/manifest.json."
+
       - name: Build
         run: npm run build --prefix editors/obsidian
 

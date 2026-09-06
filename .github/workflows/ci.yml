@@ -35,6 +35,15 @@ jobs:
       - name: Verify
         run: npm run verify
 
+      # 社区目录读 repo 根的 manifest.json;插件 manifest 在 editors/obsidian/。保持一致。
+      - name: Check root manifest matches the plugin manifest
+        run: |
+          if ! cmp -s manifest.json editors/obsidian/manifest.json; then
+            echo "::error::Root manifest.json must match editors/obsidian/manifest.json (the community directory reads the root one). Update both."
+            exit 1
+          fi
+          echo "Root manifest.json matches editors/obsidian/manifest.json."
+
       - name: Build editor clients
         run: |
           npm run build --prefix editors/vscode
