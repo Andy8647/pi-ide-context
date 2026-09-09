@@ -1,6 +1,6 @@
 {
 	"name": "pi-ide-context",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "/ide for pi — connect Neovim/VS Code, auto-inject editor context into LLM messages",
 	"keywords": [
 		"pi-package",
