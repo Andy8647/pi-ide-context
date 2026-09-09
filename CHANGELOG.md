@@ -9,7 +9,10 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
-## [Unreleased]
+## [0.3.0] - 2026-09-09
+
+The editor status moved into Starline's editor row, `/ide` gained a way out, and
+the VS Code and Obsidian clients landed.
 
 ### Added
 
@@ -27,10 +30,32 @@ the diff. A tag with no section here fails the release before anything reaches n
 - **Shared client module** (`editors/shared/protocol.ts`) — the editor-agnostic
   schema types + state-file I/O (state dir 0700, atomic tmp-then-rename write,
   removal), now that two editor clients exist. Keeps the two from drifting.
+- **Disconnecting is discoverable.** When connected, `/ide` lists a
+  `✕ Disconnect` row at the end of the picker, and `/ide ` + Tab completes
+  `off`. `/ide off` still works exactly as before — this is only about finding
+  it. Disconnecting suppresses auto-connect for the session; new sessions
+  reconnect on their own.
 
 ### Changed
 
+- **The status line is now an extension status, not a widget.**
+  `in main.ts` / `5 lines selected in main.ts` is published through
+  `ctx.ui.setStatus("pi-ide", …)` instead of a widget below the editor. Two
+  reasons: widgets can only render above or below the editor, and pi-starline
+  can place an extension status on the editor's bottom-right metadata row
+  (`"extensionStatuses": { "placements": { "pi-ide": "editor" } }`).
+  Without Starline the text shows up in Pi's built-in footer status line
+  instead of taking a row of its own. No config or protocol change.
 - Root `npm run verify` now also typechecks both editor clients; CI builds them.
+
+### Fixed
+
+- **`nvim .` no longer shows up as a bare `.`** in the `/ide` picker. Launch
+  arguments that are paths are normalized against the editor's cwd for display:
+  `.` and `./` become the directory name, `./src` becomes `src`, and an absolute
+  path inside the cwd becomes relative. Flags and plain file names are
+  untouched. Display-only — the injected context and the protocol are
+  unchanged.
 
 ## [0.2.0] - 2026-09-03
 

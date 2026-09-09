@@ -9,6 +9,8 @@ Select text in Neovim (or VS Code / Obsidian), switch to pi — pi already knows
 file you're in, where your cursor is, and what you selected. No copy-paste. No
 `:PiAsk`. It just works.
 
+![The /ide picker listing a Neovim and a VS Code instance, and the IDE Context block pi injected for the connected one](https://raw.githubusercontent.com/Andy8647/pi-ide-context/main/assets/demo.png)
+
 ## Install
 
 ### Pi extension
@@ -60,13 +62,13 @@ Then enable **pi-ide-context** under Settings → Community plugins.
 ```
 pi starts in a project where nvim is running
   ↓
-auto-connects to the single live nvim for this cwd — widget shows `in main.ts`
+auto-connects to the single live nvim for this cwd — status shows `in main.ts`
   ↓
-select lines in nvim → widget shows `5 lines selected in main.ts`
+select lines in nvim → status shows `5 lines selected in main.ts`
   ↓
 ask pi → context injected automatically (selection fresh for 60s)
   ↓
-/ide off → disconnect; new sessions auto-connect again
+/ide off (or pick "Disconnect" in the /ide list) → disconnect; new sessions auto-connect again
 ```
 
 When connected, every message you send to pi automatically includes:
@@ -86,9 +88,10 @@ When connected, every message you send to pi automatically includes:
 
 Selection text is injected only while fresh (within 60s of making it); after
 that the file/cursor context is still sent but the selection text is not — same
-as Claude Code's chip disappearing. Widget text is pure ASCII (no Nerd Font
+as Claude Code's chip disappearing. Status text is pure ASCII (no Nerd Font
 needed). If several nvim instances share this cwd, `/ide` lists them by launch
-args (`nvim pi/` vs `nvim pi-ide-context/`) so you can pick the right one.
+args (`nvim pi/` vs `nvim pi-ide-context/`) so you can pick the right one; a
+bare `nvim .` shows the directory name.
 
 ## How it works
 
@@ -106,8 +109,13 @@ args (`argv`) so same-cwd instances can be told apart.
 
 **Pi side**: `before_agent_start` reads the JSON for the connected editor and injects
 formatted editor context (lightweight file/cursor/buffer every time; selection text
-only while fresh). Auto-connects to a unique live nvim for this cwd, shows a widget
-below the editor, and a `/ide` command for manual pick / off.
+only while fresh). Auto-connects to a unique live nvim for this cwd, publishes
+`in main.ts` / `N lines selected in main.ts` through `ctx.ui.setStatus("pi-ide", …)`,
+and a `/ide` command for manual pick / off.
+
+With [pi-starline](https://github.com/Andy8647/pi-starline) installed, set
+`"extensionStatuses": { "placements": { "pi-ide": "editor" } }` to move that
+text to the editor's bottom-right metadata row instead of the footer.
 
 Full protocol in [`docs/protocol.md`](docs/protocol.md).
 

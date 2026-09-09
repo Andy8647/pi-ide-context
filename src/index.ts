@@ -9,12 +9,17 @@
  * - 自动连接:同一 cwd 下唯一存活的 editor 自动连上,零配置
  * - 注入策略:每次 prompt 都带轻量上下文(file/cursor/buffer);
  *   selection 文本只在新鲜(≤60s)时注入
- * - widget 纯 ASCII:新鲜选区 "N lines selected in x.ts",否则 "in x.ts"
+ * - 状态行纯 ASCII:新鲜选区 "N lines selected in x.ts",否则 "in x.ts"
  * - /ide off 真正断开,本 session 内不再自动重连
+ *
+ * 状态行走 ctx.ui.setStatus("pi-ide", …),不是 widget:widget 只能画在编辑器
+ * 上方/下方,而 pi-starline 的 `extensionStatuses.placements["pi-ide"] = "editor"`
+ * 会把它放到编辑器右下角的 metadata 行。没装 starline 时它出现在 pi 内置 footer
+ * 的扩展状态行里。
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
@@ -65,7 +70,7 @@ interface EditorState {
 const STATE_DIR = `${process.env.XDG_RUNTIME_DIR ?? join("/tmp")}/pi-ide`;
 /** selection 新鲜窗口:超过此时长(秒)的选区视为过期,不注入文本 */
 const SELECTION_FRESH_SECONDS = 60;
-/** widget 轮询/自动发现间隔 */
+/** 状态轮询/自动发现间隔 */
 const POLL_MS = 1000;
 
 // ---- 工具 ----
@@ -120,9 +125,22 @@ function relTime(timestampSec: number, nowSec = Date.now() / 1000): string {
 	return `${Math.floor(m / 60)}h ago`;
 }
 
+/**
+ * 启动参数里的路径按 cwd 归一化,仅用于展示:`nvim .` → `nvim <目录名>`,
+ * `./src` → `src`,cwd 内的绝对路径 → 相对路径。非路径参数(flag、文件名)原样保留。
+ */
+function resolveLaunchArg(arg: string, cwd: string): string {
+	if (arg === "." || arg === "./") return basename(cwd);
+	if (arg.startsWith("./")) return arg.slice(2);
+	const prefix = cwd.endsWith("/") ? cwd : `${cwd}/`;
+	if (arg === cwd) return basename(cwd);
+	if (arg.startsWith(prefix)) return arg.slice(prefix.length);
+	return arg;
+}
+
 /** 启动参数展示(截断,无则回退 cwd) */
 function launchLabel(s: EditorState): string {
-	const argv = (s.argv ?? []).join(" ");
+	const argv = (s.argv ?? []).map((arg) => resolveLaunchArg(arg, s.cwd)).join(" ");
 	if (argv.length > 0) return argv.length > 48 ? `${argv.slice(0, 45)}...` : argv;
 	return s.cwd;
 }
@@ -158,11 +176,11 @@ function selectedLineCount(sel: Selection): number | null {
 	return sel.end.line - sel.start.line + 1;
 }
 
-// ---- Widget 文本(纯 ASCII) ----
+// ---- 状态文本(纯 ASCII) ----
 
-function widgetLine(state: EditorState): string | null {
+function statusLine(state: EditorState): string | null {
 	const buf = state.active_buffer;
-	if (!buf.file) return null; // 无名 buffer 不占 widget
+	if (!buf.file) return null; // 无名 buffer 不占状态行
 	const sel = buf.selection;
 	if (sel && isFreshSelection(sel)) {
 		const n = selectedLineCount(sel);
@@ -212,16 +230,18 @@ let autoConnectSuppressed = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 /** session 期间持有的 ctx,供定时器调 ui */
 let activeCtx: ExtensionContext | null = null;
-/** 避免重复 notify / setWidget */
-let lastWidgetKey: string | null = null;
+/** 避免重复 notify / setStatus */
+let lastStatusKey: string | null = null;
 let lastLifecycleNotify: string | null = null;
 
-function setWidget(ctx: ExtensionContext, key: string | null) {
-	if (key === lastWidgetKey) return;
-	lastWidgetKey = key;
-	ctx.ui.setWidget("pi-ide", key === null ? [] : [key], {
-		placement: "belowEditor",
-	});
+/**
+ * 发布状态行。key 固定 "pi-ide":starline 按 key 决定放置位,pi 内置 footer 按
+ * key 排序。传 null 清除。
+ */
+function setStatus(ctx: ExtensionContext, text: string | null) {
+	if (text === lastStatusKey) return;
+	lastStatusKey = text;
+	ctx.ui.setStatus("pi-ide", text ?? undefined);
 }
 
 function notifyOnce(
@@ -238,7 +258,7 @@ function notifyOnce(
 function disconnect(ctx: ExtensionContext, reason: string) {
 	if (connectedPid === null) return;
 	connectedPid = null;
-	setWidget(ctx, null);
+	setStatus(ctx, null);
 	notifyOnce(ctx, `disconnect:${reason}`, reason, "info");
 }
 
@@ -251,11 +271,11 @@ async function pollTick() {
 	if (connectedPid !== null) {
 		const s = await readState(connectedPid);
 		if (s && pidAlive(connectedPid)) {
-			setWidget(ctx, widgetLine(s));
+			setStatus(ctx, statusLine(s));
 			lastLifecycleNotify = null; // 编辑器恢复后允许再次提示断连
 			return;
 		}
-		// 编辑器死了 / 文件没了:断开并清 widget
+		// 编辑器死了 / 文件没了:断开并清状态
 		disconnect(ctx, "IDE disconnected.");
 		return;
 	}
@@ -266,7 +286,7 @@ async function pollTick() {
 	const live = await scanLiveStates(ctx.cwd);
 	if (live.length !== 1) return; // 无 / 多个都交给 /ide 手动处理
 	connectedPid = live[0].pid;
-	lastWidgetKey = null;
+	lastStatusKey = null;
 	const buf = live[0].active_buffer;
 	notifyOnce(
 		ctx,
@@ -292,21 +312,29 @@ function stopPolling() {
 
 // ---- /ide 命令 ----
 
+/** picker 里的断开行(与 editor 行区分开) */
+const DISCONNECT_CHOICE = "✕ Disconnect";
+
+/** 断开并抑制本 session 的自动重连 */
+function disconnectIde(ctx: ExtensionContext): void {
+	connectedPid = null;
+	autoConnectSuppressed = true;
+	setStatus(ctx, null);
+	ctx.ui.notify("Disconnected from IDE. New sessions auto-connect.", "info");
+}
+
 async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void> {
-	// /ide off — 真正断开:清 widget,本 session 不再自动重连
+	// /ide off — 真正断开:清状态,本 session 不再自动重连
 	if (args === "off" || args === "disconnect") {
 		if (connectedPid === null && !autoConnectSuppressed) {
 			ctx.ui.notify("No IDE connected.", "info");
 			return;
 		}
-		connectedPid = null;
-		autoConnectSuppressed = true;
-		setWidget(ctx, null);
-		ctx.ui.notify("Disconnected from IDE. New sessions auto-connect.", "info");
+		disconnectIde(ctx);
 		return;
 	}
 
-	// /ide — 列出存活 editor,选择连接(或显示当前状态)
+	// /ide — 列出存活 editor,选择连接(或断开当前连接)
 	const live = (await scanLiveStates(ctx.cwd)).sort((a, b) => b.timestamp - a.timestamp);
 	if (live.length === 0) {
 		ctx.ui.notify(
@@ -332,20 +360,28 @@ async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void>
 		const isCurrent = s.pid === selectedPid;
 		return isCurrent ? `✓ ${cols}` : `  ${cols}`;
 	});
+	// 已连接时在末尾提供断开行:命令行的 /ide off 不总是想得起来
+	const canDisconnect = connectedPid !== null;
+	if (canDisconnect) choices.push(DISCONNECT_CHOICE);
 
 	const choice = await ctx.ui.select(`Select IDE to connect (${live.length} found):`, choices);
 	if (choice === undefined) return; // 取消
+
+	if (choice === DISCONNECT_CHOICE) {
+		disconnectIde(ctx);
+		return;
+	}
 
 	const idx = choices.indexOf(choice);
 	if (idx < 0 || idx >= live.length) return;
 
 	connectedPid = live[idx].pid;
 	autoConnectSuppressed = false;
-	lastWidgetKey = null;
+	lastStatusKey = null;
 	const buf = live[idx].active_buffer;
 	ctx.ui.notify(`Connected to ${live[idx].app} (PID ${connectedPid}) — ${buf.name}`, "info");
-	// 立即刷新 widget,不必等下一个 tick
-	setWidget(ctx, widgetLine(live[idx]));
+	// 立即刷新状态行,不必等下一个 tick
+	setStatus(ctx, statusLine(live[idx]));
 }
 
 // ---- 扩展入口 ----
@@ -354,6 +390,13 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("ide", {
 		description:
 			"Connect to running IDE (Neovim / VS Code / Obsidian) for editor context; /ide off to disconnect",
+		// 让 `/ide ` + Tab 能直接补出 off,而不是只能靠描述文字
+		getArgumentCompletions: (prefix) => {
+			const args = [
+				{ value: "off", label: "off", description: "Disconnect; new sessions auto-connect" },
+			];
+			return args.filter((a) => a.value.startsWith(prefix));
+		},
 		handler: cmdIde,
 	});
 
@@ -370,7 +413,7 @@ export default function (pi: ExtensionAPI) {
 		activeCtx = null;
 		connectedPid = null;
 		autoConnectSuppressed = false;
-		lastWidgetKey = null;
+		lastStatusKey = null;
 		lastLifecycleNotify = null;
 	});
 
