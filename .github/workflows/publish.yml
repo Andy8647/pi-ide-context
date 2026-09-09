@@ -56,6 +56,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `npm run verify` typechecks both editor clients, and their `vscode`/
+      # `obsidian` type declarations only exist after their own install. CI does
+      # this too; without it the publish fails at typecheck:vscode and burns
+      # nothing but a tag.
+      - name: Install editor client dependencies
+        run: |
+          npm ci --prefix editors/vscode
+          npm ci --prefix editors/obsidian
+
       - name: Verify
         run: npm run verify
 
