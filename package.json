@@ -1,6 +1,6 @@
 {
 	"name": "pi-ide-context",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "/ide for pi — connect Neovim/VS Code, auto-inject editor context into LLM messages",
 	"keywords": [
 		"pi-package",
@@ -30,11 +30,12 @@
 	"scripts": {
 		"lint": "biome check .",
 		"typecheck": "tsc --noEmit",
+		"test": "node --test \"test/*.test.ts\"",
 		"typecheck:vscode": "cd editors/vscode && npm run typecheck",
 		"typecheck:obsidian": "cd editors/obsidian && npm run typecheck",
 		"fmt": "biome format --write .",
 		"fmt:check": "biome format --check .",
-		"verify": "npm run lint && npm run typecheck && npm run typecheck:vscode && npm run typecheck:obsidian",
+		"verify": "npm run lint && npm run typecheck && npm test && npm run typecheck:vscode && npm run typecheck:obsidian",
 		"pack:check": "npm pack --dry-run",
 		"prepublishOnly": "npm run verify && npm run pack:check"
 	},

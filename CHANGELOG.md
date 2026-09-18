@@ -9,6 +9,50 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.3.1] - 2026-09-18
+
+`/ide` no longer says "no running editor found" when the editor is obviously in
+the same project but was started from the directory above it.
+
+### Fixed
+
+- **Match an editor by project, not by exact `cwd`.** `cd ~/Projects && nvim
+  my-project/` leaves nvim's `getcwd()` in `~/Projects`, while pi started in
+  `my-project` had nothing to match — `/ide` reported "No running editor found in
+  this project". The pi side now scores live editors and keeps the best
+  non-empty tier: `cwd` equal to pi's (tier 0), or the editor's `cwd`, its active
+  file, or a launch-argument directory being inside pi's cwd (tier 1, absolute
+  paths only — Obsidian reports a vault-relative file). Tiers never mix, and a
+  bare ancestor `cwd` is still not evidence, so `nvim ~/Projects` on a file from
+  another project does not claim `~/Projects/x`.
+- **The "not found" warning now says where the editors are.** Instead of a dead
+  end, it lists live editors in other directories (`nvim (PID 45223,
+  /Users/andy/Projects/UNSW)`), which names the mismatch in one line.
+- **Neovim client: write state on `DirChanged`.** `:cd` / `:tcd` previously
+  depended on a follow-up `CursorMoved` (and its 200 ms debounce) to refresh
+  `cwd`; now the file is correct the moment the directory change completes.
+
+### Added
+
+- `npm run test` — `node --test` regression tests for the match rule, wired into
+  `npm run verify` (which the publish workflow runs before npm).
+
+### Hardened before release
+
+- **A state file with a missing `active_buffer.file` no longer kills pi.** The
+  Neovim client writes `file` as Lua `nil` for an unnamed buffer, so the key is
+  *absent* from the JSON — not `null`. The first cut of the match rule tested
+  `file !== null`, called `path.isAbsolute(undefined)`, and the throw surfaced as
+  an unhandled rejection from the 1 s poll timer, which Node treats as fatal
+  (`pi exiting due to uncaughtException`). Fixed twice over: every field the
+  match rule reads is now type-checked, and the poll tick is wrapped so a future
+  malformed payload cannot take the process down.
+- **Neovim client writes explicit JSON `null`** for `active_buffer.file` /
+  `language` / `selection` (`vim.NIL`), matching what the protocol documents and
+  what the VS Code and Obsidian clients already did.
+- `test/fixtures/nvim-unnamed-buffer.json` is a real capture of that payload
+  (key absent), excluded from Biome formatting so it stays byte-faithful.
+
 ## [0.3.0] - 2026-09-09
 
 The editor status moved into Starline's editor row, `/ide` gained a way out, and
