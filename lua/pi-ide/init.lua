@@ -172,13 +172,20 @@ end
 local function write_state()
   vim.fn.mkdir(state_dir, "p", tonumber("700", 8))
 
+  local buf = get_buffer_state()
+  -- 协议里这几个字段是 null,不是"缺字段":Lua 的 nil 会让 key 从 JSON 里整个消失,
+  -- 消费方就得写 `file ~= nil` 这种防御。用 vim.NIL 才会编码成真正的 null。
+  if buf.file == nil then buf.file = vim.NIL end
+  if buf.language == nil then buf.language = vim.NIL end
+  if buf.selection == nil then buf.selection = vim.NIL end
+
   local state = {
     pid = vim.fn.getpid(),
     cwd = vim.fn.getcwd(),
     timestamp = os.time(),
     app = "nvim",
     argv = launch_argv(),
-    active_buffer = get_buffer_state(),
+    active_buffer = buf,
   }
 
   local fname = state_dir .. "/" .. vim.fn.getpid() .. ".json"
@@ -226,8 +233,10 @@ function M.setup(opts)
     callback = debounced_write,
   })
 
-  -- 文件/窗口切换立即写入
-  vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter", "BufWritePost" }, {
+  -- 文件/窗口切换、以及 :cd / :tcd 后立即写入
+  -- (少了 DirChanged,切换项目目录后状态文件里的 cwd 会一直停在旧目录,
+  --  pi 侧就按旧 cwd 找 editor,得等下一次光标移动才恢复)
+  vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter", "BufWritePost", "DirChanged" }, {
     group = group,
     callback = write_state,
   })

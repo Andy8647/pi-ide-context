@@ -62,7 +62,8 @@ Then enable **pi-ide-context** under Settings → Community plugins.
 ```
 pi starts in a project where nvim is running
   ↓
-auto-connects to the single live nvim for this cwd — status shows `in main.ts`
+auto-connects to the single live nvim in this project (cwd match, or nvim working
+inside the project) — status shows `in main.ts`
   ↓
 select lines in nvim → status shows `5 lines selected in main.ts`
   ↓
@@ -93,6 +94,11 @@ needed). If several nvim instances share this cwd, `/ide` lists them by launch
 args (`nvim pi/` vs `nvim pi-ide-context/`) so you can pick the right one; a
 bare `nvim .` shows the directory name.
 
+`cd ~/Projects && nvim my-project/` also connects: the editor's working directory
+is the parent, but its active file (or the launch argument) is inside
+`my-project`, which is the project you started pi in. Conversely an nvim parked
+in a shared parent working on a *different* project is not claimed.
+
 ## How it works
 
 ```
@@ -103,13 +109,13 @@ bare `nvim .` shows the directory name.
 └──────────┘                └──────────────┘               └────────┘
 ```
 
-**Neovim side**: autocmd on CursorMoved / TextChanged / BufEnter / ModeChanged writes
+**Neovim side**: autocmd on CursorMoved / TextChanged / BufEnter / ModeChanged / DirChanged writes
 editor state to a JSON file. Zero dependencies — a single Lua file. Sends its launch
 args (`argv`) so same-cwd instances can be told apart.
 
 **Pi side**: `before_agent_start` reads the JSON for the connected editor and injects
 formatted editor context (lightweight file/cursor/buffer every time; selection text
-only while fresh). Auto-connects to a unique live nvim for this cwd, publishes
+only while fresh). Auto-connects to a unique live editor in this project, publishes
 `in main.ts` / `N lines selected in main.ts` through `ctx.ui.setStatus("pi-ide", …)`,
 and a `/ide` command for manual pick / off.
 

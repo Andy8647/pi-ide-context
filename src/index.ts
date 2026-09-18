@@ -6,7 +6,8 @@
  * 详见 docs/protocol.md
  *
  * v0.2 行为:
- * - 自动连接:同一 cwd 下唯一存活的 editor 自动连上,零配置
+ * - 自动连接:同一项目(见 matchTier:cwd 相等,或 editor 明显在本项目里干活)
+ *   下唯一存活的 editor 自动连上,零配置
  * - 注入策略:每次 prompt 都带轻量上下文(file/cursor/buffer);
  *   selection 文本只在新鲜(≤60s)时注入
  * - 状态行纯 ASCII:新鲜选区 "N lines selected in x.ts",否则 "in x.ts"
@@ -18,8 +19,9 @@
  * 的扩展状态行里。
  */
 
+import { statSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
@@ -55,6 +57,7 @@ interface BufferState {
 
 interface EditorState {
 	pid: number;
+	/** editor 进程的 working directory(不是它打开的文件所在目录) */
 	cwd: string;
 	/** unix 秒:最后写入时刻(信息性) */
 	timestamp: number;
@@ -84,7 +87,8 @@ async function readState(pid: number): Promise<EditorState | null> {
 	}
 }
 
-async function scanLiveStates(cwd: string): Promise<EditorState[]> {
+/** 所有存活的 editor 状态(pid 活着 + 状态文件可读),不做项目过滤 */
+async function scanLiveStates(): Promise<EditorState[]> {
 	try {
 		const entries = await readdir(STATE_DIR);
 		const states: EditorState[] = [];
@@ -93,7 +97,7 @@ async function scanLiveStates(cwd: string): Promise<EditorState[]> {
 			const pid = Number(e.slice(0, -5));
 			if (!Number.isInteger(pid) || !pidAlive(pid)) continue;
 			const s = await readState(pid);
-			if (s && s.cwd === cwd) states.push(s);
+			if (s) states.push(s);
 		}
 		return states;
 	} catch {
@@ -109,6 +113,101 @@ function pidAlive(pid: number): boolean {
 	} catch (err) {
 		return (err as NodeJS.ErrnoException).code === "EPERM";
 	}
+}
+
+// ---- 项目匹配 ----
+// editor 的 cwd 与 pi 的 cwd 不必逐字相等才算同一个项目:`cd ~/proj && nvim src/`
+// 时 nvim 的 getcwd() 仍是 ~/proj,但用户显然是在 src 里干活。
+// 本节的纯函数导出只为测试(test/match.test.ts);pi 只消费 default export。
+
+/** tier 0 = 同一个目录;tier 1 = 同一个项目(证据较弱);null = 无关 */
+export type MatchTier = 0 | 1;
+
+/** 去掉结尾多余斜杠(`/` 自身除外),便于分段比较 */
+function normalizeDir(p: string): string {
+	return p.length > 1 && p.endsWith("/") ? p.replace(/\/+$/, "") : p;
+}
+
+/** child 是否严格位于 dir 之下(按路径分段:`/a/bc` 不算在 `/a/b` 里) */
+export function isInside(child: string, dir: string): boolean {
+	// 状态文件是外部输入,字段可能缺失/类型不对;宁可返回 false 也不抛
+	if (typeof child !== "string" || typeof dir !== "string") return false;
+	const rel = relative(normalizeDir(dir), normalizeDir(child));
+	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/**
+ * 把 argv 里指向目录的启动参数解析成绝对路径。
+ * argv 原本只为展示/区分同 cwd 实例而存在,但 `nvim <dir>/` 明确表达了"在这个
+ * 目录里干活",所以拿它当匹配证据;只认真实存在的目录,这样文件名、残留 flag、
+ * 以及 vscode/obsidian 写的 workspace/vault 名字都会被 statSync 挡掉。
+ */
+function launchDirs(state: EditorState): string[] {
+	const dirs: string[] = [];
+	for (const arg of state.argv ?? []) {
+		if (arg === "") continue;
+		const p = isAbsolute(arg) ? arg : resolve(state.cwd, arg);
+		try {
+			if (statSync(p).isDirectory()) dirs.push(normalizeDir(p));
+		} catch {
+			// 路径不存在:argv 这项不是目录,忽略
+		}
+	}
+	return dirs;
+}
+
+/** editor 是否服务于 pi 当前所在的项目,以及证据强度 */
+export function matchTier(state: EditorState, piCwd: string): MatchTier | null {
+	// 状态文件是外部输入,而 nvim 客户端的 nil 会让整个 key 消失:未命名 buffer
+	// 写出的 JSON 里根本没有 `file`(`file !== null` 挡不住 undefined,曾经因此把
+	// pi 整个进程带走)。这里每个字段都对"缺失/类型不对"宽容。
+	if (typeof state?.cwd !== "string" || state.cwd === "") return null;
+	const project = normalizeDir(piCwd);
+	const cwd = normalizeDir(state.cwd);
+	if (cwd === project) return 0;
+	// editor 开在项目里的子目录(pi 在仓库根,nvim 开在 packages/x)
+	if (isInside(cwd, project)) return 1;
+	// 正在编辑本项目里的文件:从父目录 `nvim <项目>/` 启动主要靠这条
+	const file = state.active_buffer?.file;
+	if (typeof file === "string" && isAbsolute(file) && isInside(file, project)) return 1;
+	// 启动参数直接指向本项目(还没打开任何文件时,例如 netrw 停在目录上)
+	if (launchDirs(state).some((d) => d === project || isInside(d, project))) return 1;
+	return null;
+}
+
+/**
+ * 本项目下的候选 editor,只保留证据最强的那一层:有精确 cwd 匹配时,较弱的匹配
+ * 不再出现,免得把 `nvim ~/Projects` 这种顺带的上下文混进来。
+ */
+export async function findCandidates(cwd: string): Promise<EditorState[]> {
+	const scored: { state: EditorState; tier: MatchTier }[] = [];
+	for (const state of await scanLiveStates()) {
+		const tier = matchTier(state, cwd);
+		if (tier !== null) scored.push({ state, tier });
+	}
+	if (scored.length === 0) return [];
+	const best = Math.min(...scored.map((s) => s.tier));
+	return scored.filter((s) => s.tier === best).map((s) => s.state);
+}
+
+/** 存活的 editor 里不属于本项目的那些,只用于"找不到"时的诊断提示 */
+async function scanForeignStates(cwd: string): Promise<EditorState[]> {
+	const foreign = (await scanLiveStates()).filter((s) => matchTier(s, cwd) === null);
+	return foreign.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+/**
+ * 找不到本项目 editor 时的提示。直接报出"别处有哪些 editor":用户看到
+ * `/Users/andy/Projects/UNSW` 就明白 nvim 是从父目录启的,不用猜。
+ */
+export function noEditorWarning(piCwd: string, foreign: EditorState[]): string {
+	const hint =
+		foreign.length === 0
+			? "Make sure Neovim with pi-ide is running in this project."
+			: `${foreign.length} editor${foreign.length === 1 ? "" : "s"} running elsewhere: ${foreign
+					.map((s) => `${s.app} (PID ${s.pid}, ${s.cwd})`)
+					.join(", ")}`;
+	return `No running editor found in this project (${piCwd}).\n${hint}`;
 }
 
 function isFreshSelection(sel: Selection, nowSec = Date.now() / 1000): boolean {
@@ -282,8 +381,8 @@ async function pollTick() {
 
 	if (autoConnectSuppressed) return;
 
-	// 自动发现:同一 cwd 下恰好一个存活 editor → 自动连接(零配置)
-	const live = await scanLiveStates(ctx.cwd);
+	// 自动发现:本项目下恰好一个存活 editor → 自动连接(零配置)
+	const live = await findCandidates(ctx.cwd);
 	if (live.length !== 1) return; // 无 / 多个都交给 /ide 手动处理
 	connectedPid = live[0].pid;
 	lastStatusKey = null;
@@ -299,7 +398,10 @@ async function pollTick() {
 function startPolling() {
 	if (pollTimer !== null) return;
 	pollTimer = setInterval(() => {
-		void pollTick();
+		// 状态文件是外部输入。pollTick 里任何意外都不该把 pi 整个进程带走:
+		// async 函数抛出的会变成 unhandled rejection,Node 默认当致命错误处理。
+		// matchTier 已做防御,这里只是最后一层网(不再有第二次机会解释原因)。
+		void pollTick().catch(() => {});
 	}, POLL_MS);
 }
 
@@ -334,13 +436,10 @@ async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void>
 		return;
 	}
 
-	// /ide — 列出存活 editor,选择连接(或断开当前连接)
-	const live = (await scanLiveStates(ctx.cwd)).sort((a, b) => b.timestamp - a.timestamp);
+	// /ide — 列出本项目下的存活 editor,选择连接(或断开当前连接)
+	const live = (await findCandidates(ctx.cwd)).sort((a, b) => b.timestamp - a.timestamp);
 	if (live.length === 0) {
-		ctx.ui.notify(
-			"No running editor found in this project.\nMake sure Neovim with pi-ide is running in this cwd.",
-			"warning",
-		);
+		ctx.ui.notify(noEditorWarning(ctx.cwd, await scanForeignStates(ctx.cwd)), "warning");
 		return;
 	}
 
@@ -424,8 +523,8 @@ export default function (pi: ExtensionAPI) {
 
 		const state = await readState(connectedPid);
 		if (!state || !pidAlive(connectedPid)) return; // 断开交给 poll 处理
-		const buf = state.active_buffer;
-		if (!buf.file) return; // 无名 buffer 不注入
+		// 字段缺失照旧容忍(见 matchTier):无名 buffer 的 payload 里可能根本没有 file
+		if (!state.active_buffer?.file) return; // 无名 buffer 不注入
 
 		return {
 			message: {

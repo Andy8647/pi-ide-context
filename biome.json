@@ -1,7 +1,14 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.5.4/schema.json",
 	"files": {
-		"includes": ["**", "!**/node_modules", "!**/.git", "!**/dist", "!editors/obsidian/main.js"]
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/.git",
+			"!**/dist",
+			"!editors/obsidian/main.js",
+			"!test/fixtures"
+		]
 	},
 	"formatter": {
 		"enabled": true,

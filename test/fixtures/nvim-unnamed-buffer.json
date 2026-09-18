@@ -1,0 +1,19 @@
+{
+  "active_buffer": {
+    "cursor": {
+      "column": 1,
+      "line": 1
+    },
+    "language": "netrw",
+    "lines_total": 24,
+    "modified": false,
+    "name": "[No Name]"
+  },
+  "app": "nvim",
+  "argv": [
+    "capstone-primer/"
+  ],
+  "cwd": "/Users/andy/Projects/UNSW",
+  "pid": 12345,
+  "timestamp": 1789693800
+}

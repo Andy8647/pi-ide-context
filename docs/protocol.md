@@ -17,6 +17,10 @@ Each running editor writes one JSON file:
   directory, so `0600` semantics are implied. Editors that support it should
   also `chmod` the file to `0600`.
 - Writes are atomic: write to `<pid>.json.tmp`, then rename.
+- Clients must write on buffer/window switch, cursor move, text change, mode
+  change (selection), and **directory change** (`:cd` / `:tcd` — without that the
+  file keeps a stale `cwd` until the next cursor event). Non-urgent writes may be
+  debounced; the Neovim client uses 200ms.
 - The editor deletes its file on clean exit (`VimLeavePre` etc.). Stale files
   from killed editors are tolerated: the pi side checks process liveness via
   `kill(pid, 0)` and ignores dead ones.
@@ -64,10 +68,10 @@ The pi side defines one window, `SELECTION_FRESH_SECONDS = 60`:
 | Field | Type | Notes |
 |---|---|---|
 | `pid` | number | Editor process id; pi checks liveness with `kill(pid, 0)` |
-| `cwd` | string | Working directory pi matches against to auto-connect |
+| `cwd` | string | The editor process's working directory (not the directory of the active file). pi uses it — together with `active_buffer.file` and `argv` — to decide which project the editor belongs to, see below |
 | `timestamp` | number | Unix seconds of last write (informational) |
 | `app` | string | Editor kind: `"nvim"`, `"vscode"`, `"obsidian"` (future) |
-| `argv` | string[] (optional) | Launch args without argv[0], e.g. `["pi-ide-context/"]` from `nvim pi-ide-context/`. Stable per instance — disambiguates same-cwd editors |
+| `argv` | string[] (optional) | Launch args without argv[0], e.g. `["pi-ide-context/"]` from `nvim pi-ide-context/`. Stable per instance — disambiguates same-cwd editors. Entries may be flags, plain file names or non-existent paths; pi only counts one as project evidence when it resolves to an existing directory |
 | `active_buffer.file` | string \| null | Absolute path; `null` for unnamed buffers |
 | `active_buffer.name` | string | Display name (basename for files) |
 | `active_buffer.language` | string \| null | `filetype` (nvim) / language id (vscode) |
@@ -121,10 +125,29 @@ the name is too long.
 | Connected, no/stale selection | `in main.ts` |
 | Editor dead or disconnected | (widget cleared) |
 
+## Which project is this editor in? (pi side)
+
+Matching `cwd` for equality is the strongest signal but not the only one:
+`cd ~/Projects && nvim my-project/` leaves nvim's `getcwd()` in the parent even
+though the user is working inside `my-project`. So the pi side scores every live
+editor and keeps only the best non-empty tier:
+
+| Tier | Condition |
+|---|---|
+| 0 | `cwd` equals pi's cwd |
+| 1 | `cwd` is inside pi's cwd, **or** `active_buffer.file` is inside pi's cwd (absolute paths only — Obsidian's is vault-relative), **or** an `argv` entry resolves to an existing directory equal to / inside pi's cwd |
+| none | everything else |
+
+Tiers never mix: when one editor matches exactly, a weaker match is not offered.
+`nvim ~/Projects` on a file from another project does *not* match `~/Projects/x`
+— an ancestor `cwd` alone is not evidence, so a shared parent directory cannot
+claim every project under it.
+
 ## Multi-editor notes
 
 - One editor instance per pid; several editors may write at once. Pi auto-connects
-  only when exactly one live editor matches `cwd`; otherwise it waits for `/ide`.
+  only when exactly one live editor is in the best non-empty tier; otherwise it
+  waits for `/ide`.
 - **Same-cwd instances** (e.g. `nvim pi-ide-context/` and `nvim pi/` both launched
   from the repo root): `cwd`, git root and explorer root all coincide, so they
   cannot be told apart automatically. The `/ide` picker shows each instance's

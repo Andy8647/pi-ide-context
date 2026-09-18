@@ -8,7 +8,9 @@
 		"strict": true,
 		"noEmit": true,
 		"skipLibCheck": true,
-		"verbatimModuleSyntax": true
+		"verbatimModuleSyntax": true,
+		// 测试用 node --test 直跑 TS(strip-types),import 需带 .ts 后缀
+		"allowImportingTsExtensions": true
 	},
-	"include": ["src/**/*.ts"]
+	"include": ["src/**/*.ts", "test/**/*.ts"]
 }
