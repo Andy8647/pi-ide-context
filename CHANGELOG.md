@@ -9,6 +9,30 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.4.0] - 2026-09-20
+
+Connecting is now fully manual, and `/ide` no longer decides which editors
+"belong" to your project.
+
+### Changed
+
+- **BREAKING: No auto-connect.** Sessions never attach to an editor on their
+own anymore — run `/ide` and pick one. Context injection only happens after an
+explicit choice, so nothing gets stuffed into your prompts unless you asked for
+it.
+- **BREAKING: No project matching.** `/ide` lists every live editor (nvim / VS
+Code / Obsidian) regardless of where it was started or which file it has open.
+The tier-0/tier-1 cwd/file/argv evidence scoring is gone; the list shows each
+editor's directory and launch args so you can tell instances apart yourself.
+- **A dead editor no longer triggers reconnect logic.** When the connected
+editor exits, the session disconnects with a notice; run `/ide` again to pick a
+new one.
+
+### Removed
+
+- The project-matching code (`matchTier` and friends), the "No running editor
+found in this project" warning, and all auto-discovery in the poller.
+
 ## [0.3.1] - 2026-09-18
 
 `/ide` no longer says "no running editor found" when the editor is obviously in

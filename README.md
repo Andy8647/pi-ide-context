@@ -59,17 +59,19 @@ Then enable **pi-ide-context** under Settings → Community plugins.
 
 ## Usage
 
+Nothing connects on its own — you decide per session:
+
 ```
-pi starts in a project where nvim is running
+pi starts (no IDE attached, ever)
   ↓
-auto-connects to the single live nvim in this project (cwd match, or nvim working
-inside the project) — status shows `in main.ts`
+/ide → lists every live editor (nvim / VS Code / Obsidian), wherever it was
+started from — no project/cwd filtering; you pick the relevant one
   ↓
-select lines in nvim → status shows `5 lines selected in main.ts`
+status shows `in main.ts`; select lines → `5 lines selected in main.ts`
   ↓
 ask pi → context injected automatically (selection fresh for 60s)
   ↓
-/ide off (or pick "Disconnect" in the /ide list) → disconnect; new sessions auto-connect again
+/ide off (or pick "Disconnect" in the /ide list) → disconnect
 ```
 
 When connected, every message you send to pi automatically includes:
@@ -90,14 +92,10 @@ When connected, every message you send to pi automatically includes:
 Selection text is injected only while fresh (within 60s of making it); after
 that the file/cursor context is still sent but the selection text is not — same
 as Claude Code's chip disappearing. Status text is pure ASCII (no Nerd Font
-needed). If several nvim instances share this cwd, `/ide` lists them by launch
-args (`nvim pi/` vs `nvim pi-ide-context/`) so you can pick the right one; a
-bare `nvim .` shows the directory name.
-
-`cd ~/Projects && nvim my-project/` also connects: the editor's working directory
-is the parent, but its active file (or the launch argument) is inside
-`my-project`, which is the project you started pi in. Conversely an nvim parked
-in a shared parent working on a *different* project is not claimed.
+needed). The `/ide` list shows each editor's directory and launch args
+(`nvim pi/` vs `nvim pi-ide-context/`) so several instances are easy to tell
+apart; a bare `nvim .` shows the directory name. If the connected editor exits,
+the session disconnects with a notice — run `/ide` again to reconnect.
 
 ## How it works
 
@@ -115,9 +113,9 @@ args (`argv`) so same-cwd instances can be told apart.
 
 **Pi side**: `before_agent_start` reads the JSON for the connected editor and injects
 formatted editor context (lightweight file/cursor/buffer every time; selection text
-only while fresh). Auto-connects to a unique live editor in this project, publishes
-`in main.ts` / `N lines selected in main.ts` through `ctx.ui.setStatus("pi-ide", …)`,
-and a `/ide` command for manual pick / off.
+only while fresh). Connecting is fully manual: `/ide` lists every live editor
+without project filtering, publishes `in main.ts` / `N lines selected in main.ts`
+through `ctx.ui.setStatus("pi-ide", …)`, and `/ide off` disconnects.
 
 With [pi-starline](https://github.com/Andy8647/pi-starline) installed, set
 `"extensionStatuses": { "placements": { "pi-ide": "editor" } }` to move that
