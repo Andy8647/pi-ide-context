@@ -22,7 +22,7 @@
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
@@ -324,11 +324,25 @@ export function statusLine(state: EditorState): string | null {
 // ---- 格式化 LLM 上下文 ----
 // 轻量块(file/cursor/buffer)每次注入;selection 文本仅当新鲜时附上。
 
+/**
+ * 注入前把 file 补成绝对路径。Obsidian 的 active_buffer.file 是 vault 相对路径
+ * (协议 v0.2),原样注入时模型只能拿 pi 的 cwd 去拼,必然拼错——vault 在
+ * iCloud~md~obsidian、pi 的 cwd 在别处时,连 read 都找不到文件,write 更会在项目
+ * 目录里建出一棵影子目录树。cwd 对 Obsidian 就是 vault 根,拿它 resolve 即可。
+ * nvim/vscode 已经是绝对路径,原样通过;cwd 也不是绝对路径(非
+ * FileSystemAdapter 的 vault)时无从补全,只能原样返回。
+ */
+function absoluteFile(file: string, cwd: string | undefined): string {
+	if (isAbsolute(file) || !cwd || !isAbsolute(cwd)) return file;
+	return resolve(cwd, file);
+}
+
 export function formatContext(state: EditorState, nowSec = Date.now() / 1000): string {
 	const buf = state.active_buffer;
 	const lines: string[] = [];
 	lines.push("### IDE Context");
-	lines.push(`- **File**: \`${buf.file ?? "[No Name]"}\``);
+	const file = typeof buf.file === "string" ? absoluteFile(buf.file, state.cwd) : null;
+	lines.push(`- **File**: \`${file ?? "[No Name]"}\``);
 	if (buf.language) lines.push(`- **Language**: ${buf.language}`);
 	if (buf.cursor?.line != null) {
 		const col = buf.cursor.column != null ? `, column ${buf.cursor.column}` : "";

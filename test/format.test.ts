@@ -31,6 +31,7 @@ const NOW = 1_800_000_000;
 function state(over: {
 	file?: string | null;
 	name?: string;
+	cwd?: string;
 	selection?: {
 		text: string;
 		selected_at: number | null;
@@ -41,7 +42,7 @@ function state(over: {
 	const sel = over.selection;
 	return {
 		pid: 1,
-		cwd: "/tmp/proj",
+		cwd: over.cwd ?? "/tmp/proj",
 		timestamp: NOW,
 		app: "nvim",
 		active_buffer: {
@@ -102,6 +103,33 @@ describe("formatContext", () => {
 		assert.match(out, /\*\*File\*\*: `\/tmp\/proj\/main\.ts`/);
 		assert.match(out, /\*\*Cursor\*\*: line 42, column 10/);
 		assert.match(out, /\*\*Buffer\*\*: 200 lines/);
+	});
+
+	it("vault-relative file (Obsidian) is resolved against cwd", () => {
+		// Obsidian 写的是 vault 相对路径;cwd = vault 根。模型拿到相对路径只会按 pi
+		// 的 cwd 拼,所以注入前必须补全(iCloud~md~obsidian vs com~apple~CloudDocs)。
+		const out = formatContext(
+			state({
+				file: "Career/review/career-review-八股-基础与后端.md",
+				cwd: "/Users/andy/Library/Mobile Documents/iCloud~md~obsidian/Documents/Vault",
+			}),
+			NOW,
+		);
+		assert.match(
+			out,
+			/\*\*File\*\*: `\/Users\/andy\/Library\/Mobile Documents\/iCloud~md~obsidian\/Documents\/Vault\/Career\/review\/career-review-八股-基础与后端\.md`/,
+		);
+	});
+
+	it("relative file with a non-absolute cwd stays as-is", () => {
+		// 非 FileSystemAdapter 的 vault:cwd 只是 vault 名,无从补全,别硬拼
+		const out = formatContext(state({ file: "Notes/foo.md", cwd: "MyVault" }), NOW);
+		assert.match(out, /\*\*File\*\*: `Notes\/foo\.md`/);
+	});
+
+	it("absolute file is never rewritten by cwd", () => {
+		const out = formatContext(state({ cwd: "/tmp/somewhere-else" }), NOW);
+		assert.match(out, /\*\*File\*\*: `\/tmp\/proj\/main\.ts`/);
 	});
 
 	it("fresh selection embeds its text with a fence", () => {

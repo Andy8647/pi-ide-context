@@ -68,11 +68,11 @@ The pi side defines one window, `SELECTION_FRESH_SECONDS = 60`:
 | Field | Type | Notes |
 |---|---|---|
 | `pid` | number | Editor process id; pi checks liveness with `kill(pid, 0)` |
-| `cwd` | string | The editor process's working directory (not the directory of the active file). pi uses it — together with `active_buffer.file` and `argv` — to decide which project the editor belongs to, see below |
+| `cwd` | string | The editor process's working directory (not the directory of the active file). For Obsidian it is the vault root — the base a relative `active_buffer.file` resolves against. pi uses it — together with `active_buffer.file` and `argv` — to decide which project the editor belongs to, see below |
 | `timestamp` | number | Unix seconds of last write (informational) |
 | `app` | string | Editor kind: `"nvim"`, `"vscode"`, `"obsidian"` (future) |
 | `argv` | string[] (optional) | Launch args without argv[0], e.g. `["pi-ide-context/"]` from `nvim pi-ide-context/`. Stable per instance — disambiguates same-cwd editors. Entries may be flags, plain file names or non-existent paths; pi only counts one as project evidence when it resolves to an existing directory |
-| `active_buffer.file` | string \| null | Absolute path; `null` for unnamed buffers |
+| `active_buffer.file` | string \| null | Absolute path; relative (vault/workspace-relative) when the host has no absolute path — Obsidian writes vault-relative paths like `Notes/foo.md`. pi resolves a relative path against `cwd` **before injecting**, so the block the model sees always carries a readable absolute path. `null` for unnamed buffers |
 | `active_buffer.name` | string | Display name (basename for files) |
 | `active_buffer.language` | string \| null | `filetype` (nvim) / language id (vscode) |
 | `active_buffer.cursor` | `{line, column}` | **1-based** line and **1-based byte** column |
@@ -110,6 +110,10 @@ clients that always have one (nvim, vscode) write real values.
 On every user prompt, while connected to a live editor with a real file:
 
 - Always inject the lightweight block: file, language, cursor, buffer size/modified.
+  `File` is always an absolute path: a relative `active_buffer.file` (Obsidian) is
+  resolved against `cwd` first — handing the model a bare relative path makes it
+  resolve against pi's cwd, which is a different iCloud container for an Obsidian
+  vault and silently writes a shadow tree on `write`/`edit`.
 - Inject the selection text **only when fresh** (see freshness model).
 - Stale or absent selection → no selection section at all (matches Claude Code's
   chip disappearing).

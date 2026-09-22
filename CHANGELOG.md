@@ -9,6 +9,25 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.4.2] - 2026-09-22
+
+Obsidian files are now injected with their real path, so the model can actually
+open the note you are looking at.
+
+### Fixed
+
+- **The injected `File` path is always absolute.** Obsidian writes
+  `active_buffer.file` as a vault-relative path (protocol v0.2), and it was
+  injected verbatim. The model has no way to know the vault root, so it resolved
+  the path against pi's cwd — for an Obsidian vault on iCloud
+  (`iCloud~md~obsidian`) and a project in `com~apple~CloudDocs` that lands on a
+  path that does not exist, and `read` failed with `ENOENT` on a file sitting
+  right there on disk. `write`/`edit` on such a path created a shadow
+  `Career/review/…` tree inside the project directory instead. The pi side now
+  resolves a relative `file` against `cwd` (the vault root) before injecting;
+  nvim and VS Code already wrote absolute paths and are unaffected. Protocol
+  unchanged — this is a reader-side fix.
+
 ## [0.4.1] - 2026-09-22
 
 Sent messages now show what was selected in the editor when you asked.
