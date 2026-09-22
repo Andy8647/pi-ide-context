@@ -9,6 +9,24 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.4.1] - 2026-09-22
+
+Sent messages now show what was selected in the editor when you asked.
+
+### Added
+
+- **Selection quote on your own messages.** When you send a prompt while an
+  editor selection is fresh (≤ 60 s — the same freshness rule as context
+  injection), the sent message renders a gray quote line inside its own box:
+  `│ ↳ main.ts:40-45 · const foo = bar() …`. It rides pi's markdown
+  transformer API, so it sits flush inside the message instead of a line below
+  it, truncates to the current width, and never touches what the model
+  receives. The selection data is persisted as a custom session entry, so the
+  quote survives session resume.
+- **Compatibility note:** with pi-starline's user-message styling you need
+  pi-starline ≥ 0.3.6 — earlier versions bypass pi's markdown transformer
+  pipeline entirely and the quote line silently doesn't render.
+
 ## [0.4.0] - 2026-09-20
 
 Connecting is now fully manual, and `/ide` no longer decides which editors

@@ -91,7 +91,10 @@ When connected, every message you send to pi automatically includes:
 
 Selection text is injected only while fresh (within 60s of making it); after
 that the file/cursor context is still sent but the selection text is not — same
-as Claude Code's chip disappearing. Status text is pure ASCII (no Nerd Font
+as Claude Code's chip disappearing. When you send a message while a selection
+is fresh, the sent message also shows the selection as a gray quote line
+(`│ ↳ main.ts:40-45 · …`) inside its own box, so you can see exactly what was
+attached. Status text is pure ASCII (no Nerd Font
 needed). The `/ide` list shows each editor's directory and launch args
 (`nvim pi/` vs `nvim pi-ide-context/`) so several instances are easy to tell
 apart; a bare `nvim .` shows the directory name. If the connected editor exits,

@@ -13,12 +13,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
+	appendSelectionQuote,
 	dispWidth,
 	formatContext,
 	pickerRows,
 	relTime,
+	selectionEntryLine,
 	shortDir,
 	statusLine,
+	truncateW,
 } from "../src/index.ts";
 
 type State = Parameters<typeof statusLine>[0];
@@ -214,5 +217,71 @@ describe("shortDir", () => {
 
 	it("leaves short non-home paths alone", () => {
 		assert.equal(shortDir("/tmp/proj"), "/tmp/proj");
+	});
+});
+
+describe("selectionEntryLine", () => {
+	it("formats file, line range and collapsed selection text", () => {
+		const line = selectionEntryLine({
+			file: "index.ts",
+			startLine: 12,
+			endLine: 14,
+			text: "const x = 1;\n  return x;\n",
+		});
+		assert.equal(line, "↳ index.ts:12-14 · const x = 1; return x;");
+	});
+
+	it("omits the range when lines are unknown (obsidian-style offsets)", () => {
+		const line = selectionEntryLine({
+			file: "笔记.md",
+			startLine: null,
+			endLine: null,
+			text: "选中的一段",
+		});
+		assert.equal(line, "↳ 笔记.md · 选中的一段");
+	});
+});
+
+describe("truncateW", () => {
+	it("leaves short strings alone", () => {
+		assert.equal(truncateW("abc", 10), "abc");
+	});
+
+	it("truncates by display width with an ellipsis", () => {
+		const s = truncateW("abcdefghij", 6);
+		assert.equal(s, "abcde…");
+		assert.equal(dispWidth(s), 6);
+	});
+
+	it("counts CJK as double width", () => {
+		const s = truncateW("↳ 笔记.md · 选中的一段文字", 12);
+		assert.ok(dispWidth(s) <= 12, `too wide: ${dispWidth(s)}`);
+		assert.ok(s.endsWith("…"));
+	});
+
+	it("handles tiny widths without going negative", () => {
+		assert.equal(truncateW("abc", 0), "");
+		assert.equal(truncateW("abc", 1), "…");
+	});
+});
+
+describe("appendSelectionQuote", () => {
+	it("appends the line as a blockquote after a blank line", () => {
+		assert.equal(appendSelectionQuote("我看看?", "↳ a.ts:1-1 · x"), "我看看?\n\n> ↳ a.ts:1-1 · x");
+	});
+
+	it("does NOT escape inline markdown — pi renders user messages with preserveBackslashEscapes, so backslashes would show", () => {
+		const out = appendSelectionQuote("q", "↳ a.md:1-1 · **加粗**");
+		assert.equal(out, "q\n\n> ↳ a.md:1-1 · **加粗**");
+	});
+
+	it("skips the quote when the message has an unclosed code fence", () => {
+		const md = "看这个:\n```ts\nconst x = 1;";
+		assert.equal(appendSelectionQuote(md, "↳ a.ts:1-1 · x"), md);
+	});
+
+	it("still appends when fences are balanced", () => {
+		const md = "看这个:\n```ts\nconst x = 1;\n```";
+		assert.equal(appendSelectionQuote(md, "↳ a.ts:1-1 · x"), `${md}\n\n> ↳ a.ts:1-1 · x`);
 	});
 });

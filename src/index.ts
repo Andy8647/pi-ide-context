@@ -11,6 +11,8 @@
  *   选一个才连;/ide off 断开。editor 进程退出后只通知,不自动重连
  * - 注入策略:每次 prompt 都带轻量上下文(file/cursor/buffer);
  *   selection 文本只在新鲜(≤60s)时注入
+ * - selection 展示:带着新鲜选区发出的 user message 下方追加一行灰色
+ *   `↳ file:start-end · 选中内容`(custom entry,持久化但不进 LLM context)
  * - 状态行纯 ASCII:新鲜选区 "N lines selected in x.ts",否则 "in x.ts"
  *
  * 状态行走 ctx.ui.setStatus("pi-ide", …),不是 widget:widget 只能画在编辑器
@@ -74,6 +76,10 @@ const STATE_DIR = `${process.env.XDG_RUNTIME_DIR ?? join("/tmp")}/pi-ide`;
 const SELECTION_FRESH_SECONDS = 60;
 /** 连接状态轮询间隔 */
 const POLL_MS = 1000;
+/** 聊天记录里 selection 展示的 custom entry 类型(不进 LLM context,仅展示) */
+const SELECTION_ENTRY_TYPE = "pi-ide-selection";
+/** 存进 entry 的 selection 文本上限:展示只占一行,没必要把整段选区写进 session 文件 */
+const SELECTION_ENTRY_TEXT_MAX = 200;
 
 // ---- 工具 ----
 
@@ -209,6 +215,93 @@ export function pickerRows(live: EditorState[], connectedPid: number | null): st
 function selectedLineCount(sel: Selection): number | null {
 	if (sel.start.line === null || sel.end.line === null) return null;
 	return sel.end.line - sel.start.line + 1;
+}
+
+// ---- user message 盒内的 selection 灰字行 ----
+// 做法:custom entry 只存数据(持久化,不进 LLM context,也不注册 renderer 所以不直接
+// 显示);真正的显示走 markdown transformer——pi 渲染 user message 前会调它,我们把
+// `> ↳ file:start-end · 选中内容` 追加到消息末尾,渲染成盒子里的一行灰色 blockquote。
+// 为什么不用 entry 直接显示:CustomEntryComponent 会在内容前硬加一个 Spacer(1),
+// 灰字和 user message 盒子之间永远隔一行,视觉上像脱节的两条消息。
+
+/** 存进 custom entry 的数据(session 文件里可见,字段只增不减) */
+export interface SelectionEntryData {
+	file: string;
+	startLine: number | null;
+	endLine: number | null;
+	text: string;
+}
+
+/** user message 原文 → 那行灰字。message_start 时写入(扩展事件先于 UI 派发,
+ * 所以 UserMessageComponent 构造时 map 已就绪);session_start 时从 entry 重建。 */
+const selectionLineByPrompt = new Map<string, string>();
+
+/** 按显示宽度截断(中文/全角按 2 格),放不下时末尾加 … */
+export function truncateW(s: string, maxWidth: number): string {
+	if (maxWidth < 1) return "";
+	if (dispWidth(s) <= maxWidth) return s;
+	if (maxWidth < 2) return "…";
+	let out = "";
+	let w = 0;
+	for (const ch of s) {
+		const cw = dispWidth(ch);
+		if (w + cw > maxWidth - 1) return `${out}…`;
+		out += ch;
+		w += cw;
+	}
+	return out;
+}
+
+/** 灰字行的纯文本:↳ file:start-end · 选中内容(折行/多余空白压成一个空格) */
+export function selectionEntryLine(d: SelectionEntryData): string {
+	const range = d.startLine !== null && d.endLine !== null ? `:${d.startLine}-${d.endLine}` : "";
+	const oneLine = d.text.replace(/\s+/g, " ").trim();
+	return `↳ ${d.file}${range} · ${oneLine}`;
+}
+
+/** 把灰字行作为 blockquote 追加到 user message markdown 末尾。
+ * 注意不做 markdown escape:pi 的 UserMessageComponent 开了 preserveBackslashEscapes,
+ * `\*` 会被原样显示成 `\*`(实测)。选区里的 inline 语法(`**`、反引号)就让它渲染,
+ * 反正都在灰色斜体的 quote 样式里;唯一要防的是消息本身有未闭合 code fence,
+ * 那会把追加的 quote 吞进代码块——这种情况宁可不显示。 */
+export function appendSelectionQuote(markdown: string, line: string): string {
+	let fences = 0;
+	for (const l of markdown.split("\n")) if (/^\s*(```|~~~)/.test(l)) fences++;
+	if (fences % 2 === 1) return markdown;
+	return `${markdown}\n\n> ${line}`;
+}
+
+/** 和 UI 侧 getUserMessageText 相同的文本提取(text block 直接拼接),保证 map key 一致 */
+function userTextOf(message: { content: unknown }): string {
+	const c = message.content;
+	if (typeof c === "string") return c;
+	if (!Array.isArray(c)) return "";
+	return c
+		.filter((b): b is { type: "text"; text: string } => b?.type === "text")
+		.map((b) => b.text)
+		.join("");
+}
+
+/** session_start 时从持久化的 entry 重建 map:每条 pi-ide-selection 归属它前面最近的 user message */
+function rebuildSelectionLineMap(ctx: ExtensionContext): void {
+	selectionLineByPrompt.clear();
+	try {
+		let lastUserText: string | null = null;
+		for (const e of ctx.sessionManager.getEntries()) {
+			if (e.type === "message") {
+				const m = (e as { message?: { role?: string; content?: unknown } }).message;
+				if (m?.role === "user") lastUserText = userTextOf(m as { content: unknown });
+			} else if (e.type === "custom") {
+				const c = e as { customType?: string; data?: SelectionEntryData };
+				if (c.customType === SELECTION_ENTRY_TYPE && c.data && lastUserText) {
+					selectionLineByPrompt.set(lastUserText, selectionEntryLine(c.data));
+					lastUserText = null;
+				}
+			}
+		}
+	} catch {
+		// sessionManager 早期状态不可用时放弃重建;实时消息的 map 写入不受影响
+	}
 }
 
 // ---- 状态文本(纯 ASCII) ----
@@ -401,6 +494,10 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		activeCtx = ctx;
+		// 从持久化的 entry 重建 map,让 resume/reload 后的历史消息也能显示灰字。
+		// 注意 reload 路径会先把 chat 渲染一遍再发 session_start,那一遍已经按空 map
+		// 缓存了;历史灰字要等下一次 chat 重建(窗口 resize 等)才出现,可接受。
+		rebuildSelectionLineMap(ctx);
 		// 不自动连接:轮询只为维护用户手动建立的连接
 		startPolling();
 	});
@@ -412,6 +509,77 @@ export default function (pi: ExtensionAPI) {
 		connectedPid = null;
 		lastStatusKey = null;
 		lastLifecycleNotify = null;
+		selectionLineByPrompt.clear();
+	});
+
+	// user message 渲染前把灰字行挂进盒子。transformer 每次 render 都会跑(Markdown
+	// 组件按 text+width 缓存),所以这里必须纯函数:同一条消息多次渲染结果一致。
+	pi.registerMarkdownTransformer((markdown, context) => {
+		if (context.messageType !== "user" || context.isStreaming) return markdown;
+		const line = selectionLineByPrompt.get(markdown);
+		if (!line) return markdown;
+		// blockquote 渲染时占掉 2 格("│ ");宽度太离谱时回退 80
+		const width = context.availableWidth > 4 ? context.availableWidth - 2 : 80;
+		return appendSelectionQuote(markdown, truncateW(line, width));
+	});
+
+	// message_start(role=user)时写 map。扩展事件先于 UI 派发(_handleAgentEvent:
+	// _emitExtensionEvent → _emit(UI)),所以 UserMessageComponent 构造并首次跑
+	// transformer 时,map 里已经有这条消息的灰字行了。
+	pi.on("message_start", async (event, _ctx) => {
+		if (event.message.role !== "user") return;
+		if (connectedPid === null) return;
+
+		const state = await readState(connectedPid);
+		if (!state || !pidAlive(connectedPid)) return;
+		const buf = state.active_buffer;
+		if (!buf?.file) return;
+		const sel = buf.selection;
+		// 和注入用同一个新鲜度判据:注入给模型看过的选区,才在消息上留痕
+		if (!sel || !isFreshSelection(sel) || !sel.text.trim()) return;
+
+		const text = userTextOf(event.message);
+		if (!text) return;
+		selectionLineByPrompt.set(
+			text,
+			selectionEntryLine({
+				file: buf.name,
+				startLine: sel.start.line,
+				endLine: sel.end.line,
+				text:
+					sel.text.length > SELECTION_ENTRY_TEXT_MAX
+						? sel.text.slice(0, SELECTION_ENTRY_TEXT_MAX)
+						: sel.text,
+			}),
+		);
+	});
+
+	// entry 只负责持久化(resume 时 rebuildSelectionLineMap 的数据源),不负责显示。
+	// 为什么 message_end + setImmediate:_handleAgentEvent 里扩展事件先于 UI 和 session
+	// 持久化派发;user message 在 message_end 之后落盘,同步 appendEntry 会让 entry 在
+	// session 树里排到 user message *前面*,rebuild 时归属就错了。setImmediate 推到
+	// 整个事件派发完之后,树里顺序 = user message → entry。
+	pi.on("message_end", async (event, _ctx) => {
+		if (event.message.role !== "user") return;
+		if (connectedPid === null) return;
+
+		const state = await readState(connectedPid);
+		if (!state || !pidAlive(connectedPid)) return;
+		const buf = state.active_buffer;
+		if (!buf?.file) return;
+		const sel = buf.selection;
+		if (!sel || !isFreshSelection(sel) || !sel.text.trim()) return;
+
+		const data: SelectionEntryData = {
+			file: buf.name,
+			startLine: sel.start.line,
+			endLine: sel.end.line,
+			text:
+				sel.text.length > SELECTION_ENTRY_TEXT_MAX
+					? sel.text.slice(0, SELECTION_ENTRY_TEXT_MAX)
+					: sel.text,
+		};
+		setImmediate(() => pi.appendEntry(SELECTION_ENTRY_TYPE, data));
 	});
 
 	// 每次 prompt 注入编辑器上下文(轻量必带,selection 全文仅新鲜时)
