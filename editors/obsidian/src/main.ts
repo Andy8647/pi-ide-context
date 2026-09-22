@@ -53,7 +53,22 @@ function buildSelection(editor: Editor, selectedAt: number | null): Selection | 
 	};
 }
 
-function buildBufferState(view: MarkdownView | null, selectedAt: number | null): BufferState {
+/** 阅读模式选区:DOM 渲染文本,无源码行号概念 → 位置全 null(协议允许) */
+function buildReadingSelection(text: string | null, selectedAt: number | null): Selection | null {
+	if (!text) return null;
+	return {
+		start: { line: null, column: null },
+		end: { line: null, column: null },
+		text,
+		selected_at: selectedAt,
+	};
+}
+
+function buildBufferState(
+	view: MarkdownView | null,
+	selectedAt: number | null,
+	readingSelection: string | null,
+): BufferState {
 	if (!view?.file) {
 		return {
 			file: null,
@@ -68,13 +83,17 @@ function buildBufferState(view: MarkdownView | null, selectedAt: number | null):
 
 	const file = view.file;
 	const editor = view.editor;
+	// 阅读模式下 CM6 不在场,editor.getSelection() 恒为空;选区来自 DOM
+	const isPreview = view.getMode() === "preview";
 
 	return {
 		file: file.path, // vault 相对路径,如 "Notes/foo.md"
 		name: file.name,
 		language: "markdown",
 		cursor: toPosition(editor.getCursor()),
-		selection: buildSelection(editor, selectedAt),
+		selection: isPreview
+			? buildReadingSelection(readingSelection, selectedAt)
+			: buildSelection(editor, selectedAt),
 		modified: false, // Obsidian 自动保存,无未保存概念
 		lines_total: editor.lineCount(),
 	};
@@ -84,6 +103,8 @@ export default class PiIdeContextPlugin extends Plugin {
 	private debounceTimer: number | null = null;
 	/** 用户最后一次做出非空选择的时刻(unix 秒);null = 未知(视为过期) */
 	private lastSelectionAt: number | null = null;
+	/** 阅读模式下 preview 容器内的 DOM 选中文本;编辑模式恒为 null */
+	private readingSelection: string | null = null;
 	/** onunload 后置 true,防止关闭过程再触发事件把状态文件写回来 */
 	private unloaded = false;
 
@@ -97,6 +118,7 @@ export default class PiIdeContextPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", () => {
 				this.lastSelectionAt = null;
+				this.readingSelection = null;
 				this.writeActiveState();
 			}),
 		);
@@ -110,6 +132,22 @@ export default class PiIdeContextPlugin extends Plugin {
 				if (update.selectionSet) this.debouncedWrite();
 			}),
 		);
+
+		// 阅读模式(无 CM6)的选区:DOM selectionchange,只认当前 view 的 preview
+		// 容器内的选区(否则侧栏/搜索框里的选择也会被当成笔记选区)
+		this.registerDomEvent(document, "selectionchange", () => {
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (!view || view.getMode() !== "preview") return;
+			const sel = window.getSelection();
+			const text = sel && !sel.isCollapsed ? sel.toString() : "";
+			const inPreview = sel?.anchorNode ? view.containerEl.contains(sel.anchorNode) : false;
+			const next = text !== "" && inPreview ? text : null;
+			if (next !== null) this.lastSelectionAt = Math.floor(Date.now() / 1000);
+			if (next !== this.readingSelection) {
+				this.readingSelection = next;
+				this.debouncedWrite();
+			}
+		});
 
 		// 退出清理:onunload 在禁用/重载插件时触发;OS 级 quit 不保证触发 onunload,
 		// 补一个 Workspace "quit" 事件做 best-effort 清理(文档明确不保证执行)。
@@ -147,6 +185,7 @@ export default class PiIdeContextPlugin extends Plugin {
 			active_buffer: buildBufferState(
 				this.app.workspace.getActiveViewOfType(MarkdownView),
 				this.lastSelectionAt,
+				this.readingSelection,
 			),
 		};
 		writeState(state);
