@@ -9,17 +9,6 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
-## [Unreleased]
-
-### Changed
-
-- **The VS Code client is a proper Marketplace listing.** It was published once
-  with no icon, no README, one keyword-less category, and no way to update it
-  except by hand. The extension now carries a 128px icon, its own README, keywords
-  and a gallery banner, and \`.github/workflows/vscode.yml\` publishes it from a
-  \`vscode/<version>\` tag (or a manual run). The client itself is unchanged, so
-  this is version 0.1.1.
-
 ## [0.5.1] - 2026-10-25
 
 The npm card now looks like the project. No behaviour changed.
