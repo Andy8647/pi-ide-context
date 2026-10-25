@@ -8,11 +8,12 @@
  * clients' own UI.
  *
  * Codepoints come from Nerd Fonts' glyphnames.json (v3). Every one of them was
- * checked against the cmap of Maple Mono NF and Maple Mono NF CN, because a glyph
+ * checked against the cmap of the installed Maple Mono NF CN (v8), because a glyph
  * the font does not carry does not fall back cleanly in a terminal: it renders as
- * a box or as overlapping junk. `custom-obsidian` (U+E6BB) and `cod-vscode`
- * (U+EC29) are in glyphnames but missing from that font, so Obsidian uses a note
- * mark and VS Code uses the devicons mark.
+ * a box or as overlapping junk. Maple Mono 7.9 shipped an older Nerd Fonts patch
+ * that lacked `custom-obsidian` (U+E6BB) and `cod-vscode` (U+EC29); v8 has both,
+ * and `test/icons.test.ts` pins them so a downgrade is visible as a failing test
+ * rather than as mojibake in the footer.
  */
 
 /** Generic "an editor is attached" mark, used while nothing is connected. */
@@ -25,8 +26,8 @@ export const FILE_ICON = "\uea7b"; // cod-file
 const APP_ICONS: Record<string, string> = {
 	nvim: "\ue6ae", // custom-neovim
 	neovim: "\ue6ae",
-	vscode: "\ue8da", // dev-vscode (cod-vscode is absent from Maple Mono NF)
-	obsidian: "\ueb26", // cod-note (custom-obsidian is absent too)
+	vscode: "\uec29", // cod-vscode
+	obsidian: "\ue6bb", // custom-obsidian
 };
 
 /** Display names, because `nvim` is not how anyone writes Neovim in a bubble. */

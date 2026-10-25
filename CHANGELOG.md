@@ -25,10 +25,11 @@ connected, and opens a picker with the other live editors and a disconnect row.
   protocol is unchanged: the glyphs are chosen pi-side from `app` and
   `active_buffer.language`.
 
-- **Two marks are substitutes.** Nerd Fonts has a `cod-vscode` and a
-  `custom-obsidian`, but neither is in Maple Mono NF (checked against its cmap),
-  where they render as junk instead of falling back to a box. VS Code uses
-  `dev-vscode` and Obsidian uses a note mark instead.
+- **The editor marks need a current Nerd Fonts patch.** VS Code uses
+  `cod-vscode` (U+EC29) and Obsidian `custom-obsidian` (U+E6BB). Maple Mono 7.9
+  ships an older Nerd Fonts set without either, where a missing glyph renders as
+  junk rather than a box; Maple Mono 8.0 (beta) has both. On an older font, set
+  `icons.mode: "ascii"` in Starline or expect those two marks to look wrong.
 
 - **The status is always published.** A generic editor mark stands in while nothing
   is connected, so the pill is a permanent target rather than appearing and

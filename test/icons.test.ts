@@ -6,8 +6,8 @@ import { appIcon, appName, FILE_ICON, IDE_ICON, languageIcon } from "../src/icon
 // tables: a wrong glyph renders as a box, and nothing else would catch it.
 const GLYPHS = {
 	neovim: "\ue6ae",
-	vscode: "\ue8da",
-	obsidian: "\ueb26",
+	vscode: "\uec29",
+	obsidian: "\ue6bb",
 	genericIde: "\ueae3",
 	typescript: "\ue8ca",
 	markdown: "\ue73e",
