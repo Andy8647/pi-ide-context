@@ -5,3 +5,6 @@ editors/obsidian/main.js
 *.vsix
 
 .DS_Store
+
+# Working notes, not product
+HANDOFF.md

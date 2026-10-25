@@ -9,7 +9,7 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
-## [Unreleased]
+## [0.5.0] - 2026-10-25
 
 The status line becomes a pill you can click. It shows the connected editor and the
 file's language as two glyphs instead of a filename, stays visible while nothing is
