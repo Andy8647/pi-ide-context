@@ -25,6 +25,11 @@ connected, and opens a picker with the other live editors and a disconnect row.
   protocol is unchanged: the glyphs are chosen pi-side from `app` and
   `active_buffer.language`.
 
+- **Two marks are substitutes.** Nerd Fonts has a `cod-vscode` and a
+  `custom-obsidian`, but neither is in Maple Mono NF (checked against its cmap),
+  where they render as junk instead of falling back to a box. VS Code uses
+  `dev-vscode` and Obsidian uses a note mark instead.
+
 - **The status is always published.** A generic editor mark stands in while nothing
   is connected, so the pill is a permanent target rather than appearing and
   disappearing. Disconnecting returns to that mark instead of clearing the status.

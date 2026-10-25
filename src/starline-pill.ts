@@ -59,12 +59,56 @@ function pillApi(): StarlinePillApi | undefined {
 const LIVE_TICK_MS = 1_000;
 /** Rows for other live editors; a bubble is a glance, not a picker. */
 const MAX_OTHER_ROWS = 5;
+/**
+ * Starline lays the bubble out at up to 64 columns, so a row longer than this
+ * wraps — and a wrapped row in a one-fact-per-line list reads as a mistake.
+ *
+ * Facts are dropped in reverse order of importance (the directory first, then the
+ * selection and cursor) and whatever is left is clipped from the left, which keeps
+ * the tail of a filename: `…-q-learning.md` still says which note it is.
+ */
+const MAX_ROW_WIDTH = 52;
+
+function textWidth(text: string): number {
+	return [...text].length;
+}
+
+function clip(text: string, max: number): string {
+	return textWidth(text) <= max ? text : `…${[...text].slice(-(max - 1)).join("")}`;
+}
+
+function fitRow(parts: string[], lead: string): string {
+	const SEPARATOR = " \u00b7 ";
+	// The bullet and its space count against the row: they are drawn, not metadata.
+	const budgetFor = (text: string) => MAX_ROW_WIDTH - textWidth(lead) - textWidth(text);
+	let current = [...parts];
+	if (textWidth(current.join(SEPARATOR)) > budgetFor("") && current.length > 2) {
+		// The directory goes first: the editor and the file identify the context on
+		// their own, and the path is the part that grows without bound.
+		current = [current[0] ?? "", ...current.slice(2)];
+	}
+	while (textWidth(current.join(SEPARATOR)) > budgetFor("") && current.length > 2) current.pop();
+	// A long filename is clipped on its own, so the editor's name survives: it is
+	// the one fact the row cannot lose.
+	if (current.length > 1 && textWidth(current.join(SEPARATOR)) > budgetFor("")) {
+		const fixed = [current[0] ?? "", ...current.slice(2)].join(SEPARATOR);
+		const budget = budgetFor(fixed) - textWidth(SEPARATOR);
+		if (budget > 8) current[1] = clip(current[1] ?? "", budget);
+	}
+	const row = current.join(SEPARATOR);
+	return `${lead}${textWidth(row) > budgetFor("") ? clip(row, budgetFor("")) : row}`;
+}
+
+/** The last directory in a path, which is all a bubble row has room for. */
+function baseDir(path: string): string {
+	const trimmed = path.replace(/\/+$/, "");
+	return trimmed.split("/").pop() ?? path;
+}
 
 export type PillDeps = {
 	connectedPid(): number | null;
 	readState(pid: number): Promise<EditorState | null>;
 	scanLiveStates(): Promise<EditorState[]>;
-	shortDir(path: string): string;
 	isFreshSelection(selection: Selection): boolean;
 	selectedLineCount(selection: Selection): number | null;
 	/** Connect to `state`, the same path `/ide` takes. */
@@ -75,11 +119,7 @@ export type PillDeps = {
 /** `buffer.ts · line 12:3 · 4 lines selected`: the current editor in one row. */
 function currentRow(state: EditorState, deps: PillDeps): string {
 	const buffer = state.active_buffer;
-	const parts = [
-		`${appIcon(state.app)} ${appName(state.app)}`,
-		deps.shortDir(state.cwd),
-		buffer.name,
-	];
+	const parts = [`${appIcon(state.app)} ${appName(state.app)}`, baseDir(state.cwd), buffer.name];
 	const cursor = buffer.cursor;
 	if (cursor && cursor.line !== null) {
 		parts.push(
@@ -91,14 +131,14 @@ function currentRow(state: EditorState, deps: PillDeps): string {
 		const lines = deps.selectedLineCount(selection);
 		parts.push(lines === null ? "selection" : `${lines} line${lines === 1 ? "" : "s"} selected`);
 	}
-	return `● ${parts.join(" · ")}`;
+	return fitRow(parts, "\u25cf ");
 }
 
 /** One live editor that is not the connected one; clicking it switches over. */
-function liveRow(editor: EditorState, deps: PillDeps): string {
-	const parts = [`${appIcon(editor.app)} ${appName(editor.app)}`, deps.shortDir(editor.cwd)];
+function liveRow(editor: EditorState): string {
+	const parts = [`${appIcon(editor.app)} ${appName(editor.app)}`, baseDir(editor.cwd)];
 	parts.push(editor.active_buffer.name);
-	return `▸ ${parts.join(" · ")}`;
+	return fitRow(parts, "\u25b8 ");
 }
 
 /**
@@ -124,7 +164,7 @@ export function bubbleContent(
 		.filter((editor) => editor.pid !== connectedPid)
 		.sort((a, b) => b.timestamp - a.timestamp);
 	for (const editor of others.slice(0, MAX_OTHER_ROWS)) {
-		body.push({ text: liveRow(editor, deps), onSelect: () => deps.connect(ctx, editor) });
+		body.push({ text: liveRow(editor), onSelect: () => deps.connect(ctx, editor) });
 	}
 
 	if (connectedPid !== null) {
@@ -135,7 +175,7 @@ export function bubbleContent(
 	const hint =
 		connectedPid === null ? "click a row to connect · esc" : "click a row to switch · esc";
 	return {
-		title: state ? `IDE · ${state.active_buffer.name}` : "IDE context",
+		title: state ? `IDE · ${clip(state.active_buffer.name, 40)}` : "IDE context",
 		body,
 		hint,
 	};

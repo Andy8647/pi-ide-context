@@ -7,8 +7,12 @@
  * Nerd Font shows boxes — but the extension already assumes one for the editor
  * clients' own UI.
  *
- * Codepoints come from Nerd Fonts' glyphnames.json (v3): `custom-neovim`,
- * `cod-vscode`, `custom-obsidian`, `cod-editor_layout`, `dev-*` for languages.
+ * Codepoints come from Nerd Fonts' glyphnames.json (v3). Every one of them was
+ * checked against the cmap of Maple Mono NF and Maple Mono NF CN, because a glyph
+ * the font does not carry does not fall back cleanly in a terminal: it renders as
+ * a box or as overlapping junk. `custom-obsidian` (U+E6BB) and `cod-vscode`
+ * (U+EC29) are in glyphnames but missing from that font, so Obsidian uses a note
+ * mark and VS Code uses the devicons mark.
  */
 
 /** Generic "an editor is attached" mark, used while nothing is connected. */
@@ -21,8 +25,8 @@ export const FILE_ICON = "\uea7b"; // cod-file
 const APP_ICONS: Record<string, string> = {
 	nvim: "\ue6ae", // custom-neovim
 	neovim: "\ue6ae",
-	vscode: "\uec29", // cod-vscode
-	obsidian: "\ue6bb", // custom-obsidian
+	vscode: "\ue8da", // dev-vscode (cod-vscode is absent from Maple Mono NF)
+	obsidian: "\ueb26", // cod-note (custom-obsidian is absent too)
 };
 
 /** Display names, because `nvim` is not how anyone writes Neovim in a bubble. */

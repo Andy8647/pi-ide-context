@@ -534,7 +534,6 @@ export default function (pi: ExtensionAPI) {
 			connectedPid: () => connectedPid,
 			readState,
 			scanLiveStates,
-			shortDir,
 			isFreshSelection,
 			selectedLineCount,
 			connect: connectTo,

@@ -40,7 +40,6 @@ function deps(overrides: Partial<PillDeps> = {}): PillDeps {
 		connectedPid: () => null,
 		readState: async () => null,
 		scanLiveStates: async () => [],
-		shortDir: (path) => path.replace("/Users/andy", "~"),
 		isFreshSelection: () => true,
 		selectedLineCount: () => 3,
 		connect: () => {},
@@ -57,19 +56,44 @@ function targets(body: ReturnType<typeof bubbleContent>["body"]) {
 }
 
 const NVIM = "\ue6ae";
-const VSCODE = "\uec29";
+const VSCODE = "\ue8da";
 const TS = "\ue8ca";
 
-test("describes the connected buffer, cursor and fresh selection in one row", () => {
+test("one row carries the editor, directory, file, cursor and selection", () => {
 	const state = editor({ active_buffer: { ...editor().active_buffer, selection: selection() } });
 	const content = bubbleContent(state, [state], state.pid, deps(), ctx);
 
 	assert.equal(content.title, "IDE · main.ts");
-	assert.equal(
-		content.body[0],
-		`\u25cf ${NVIM} Neovim · ~/proj · main.ts · line 42:10 · 3 lines selected`,
-	);
+	// The selection pushes the row past 52 columns, so the directory is the fact
+	// that goes: everything else still fits on one line.
+	assert.equal(content.body[0], `\u25cf ${NVIM} Neovim · main.ts · line 42:10 · 3 lines selected`);
 	assert.equal(targets(content.body)[0]?.text, "\u2715 Disconnect");
+});
+
+test("keeps the directory while the row fits", () => {
+	const content = bubbleContent(editor(), [editor()], 100, deps(), ctx);
+
+	assert.equal(content.body[0], `\u25cf ${NVIM} Neovim · proj · main.ts · line 42:10`);
+});
+
+test("stays inside one bubble line even for a deep path and a long name", () => {
+	const deep = editor({
+		cwd: "/Users/andy/Library/Mobile Documents/iCloud~md~obsidian/Documents/Vault/UNSW/wiki",
+		active_buffer: {
+			...editor().active_buffer,
+			name: "deep-q-learning-and-a-very-long-note-name.md",
+			selection: selection(),
+		},
+	});
+	const content = bubbleContent(deep, [deep], deep.pid, deps(), ctx);
+	const row = String(content.body[0]);
+
+	assert.ok([...row].length <= 52, `row is ${[...row].length} columns: ${row}`);
+	// The selection and cursor are dropped, the filename is clipped from the left,
+	// and the editor's name survives: it is the one fact the row cannot lose.
+	assert.ok(row.includes("Neovim"));
+	assert.ok(row.endsWith(".md"), row);
+	assert.ok(row.includes("\u2026"), row);
 });
 
 test("drops a stale selection", () => {
@@ -99,7 +123,7 @@ test("lists other live editors as switch targets, with their own marks", () => {
 
 	const row = targets(content.body).find((line) => line.text.startsWith("\u25b8"));
 	assert.ok(row, "expected a switch row");
-	assert.equal(row.text, `\u25b8 ${VSCODE} VS Code · ~/other · main.ts`);
+	assert.equal(row.text, `\u25b8 ${VSCODE} VS Code · other · main.ts`);
 	row.onSelect();
 	assert.deepEqual(connectedTo, [200]);
 });
@@ -119,5 +143,5 @@ test("an unnamed buffer still names the editor", () => {
 	});
 	const content = bubbleContent(state, [state], state.pid, deps(), ctx);
 
-	assert.equal(content.body[0], `\u25cf ${NVIM} Neovim · ~/proj · [No Name] · line 42:10`);
+	assert.equal(content.body[0], `\u25cf ${NVIM} Neovim · proj · [No Name] · line 42:10`);
 });
