@@ -193,6 +193,11 @@ function padEndW(s: string, width: number): string {
 	return pad > 0 ? s + " ".repeat(pad) : s;
 }
 
+/** `/ide` 列表里的编辑器列:`  obsidian`,图标和协议里的 app id 各占一格语义。 */
+function appLabel(state: EditorState): string {
+	return `${appIcon(state.app)} ${state.app}`;
+}
+
 /**
  * /ide 列表行。所有行列对齐(app/目录/launch/file 都按列最大显示宽度
  * 右侧补齐);最后一列 relTime 宽度不一是允许的,它后面没有东西。
@@ -200,13 +205,13 @@ function padEndW(s: string, width: number): string {
  * 导出只为测试对齐(test/format.test.ts)。
  */
 export function pickerRows(live: EditorState[], connectedPid: number | null): string[] {
-	const appW = Math.max(...live.map((s) => dispWidth(s.app)));
+	const appW = Math.max(...live.map((s) => dispWidth(appLabel(s))));
 	const dirW = Math.max(...live.map((s) => dispWidth(shortDir(s.cwd))));
 	const launchW = Math.max(...live.map((s) => dispWidth(launchLabel(s))));
 	const fileW = Math.max(...live.map((s) => dispWidth(s.active_buffer.name)));
 	return live.map((s) => {
 		const cols =
-			`${padEndW(s.app, appW)}  ` +
+			`${padEndW(appLabel(s), appW)}  ` +
 			`${padEndW(shortDir(s.cwd), dirW)}  ` +
 			`${padEndW(launchLabel(s), launchW)}  ` +
 			`${padEndW(s.active_buffer.name, fileW)}  ${relTime(s.timestamp)}`;

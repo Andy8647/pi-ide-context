@@ -211,6 +211,14 @@ describe("pickerRows", () => {
 		);
 	});
 
+	it("each row carries the editor's mark", () => {
+		const rows = pickerRows(live, null);
+		// 与 pill / 气泡同一套字形:协议 id 前面加一个 Nerd Font 图标。
+		assert.ok(rows[0].includes("\uec29 vscode"), rows[0]);
+		assert.ok(rows[1].includes("\ue6ae nvim"), rows[1]);
+		assert.ok(rows[2].includes("\ue6bb obsidian"), rows[2]);
+	});
+
 	it("the connected marker keeps alignment", () => {
 		const rows = pickerRows(live, 432);
 		assert.ok(rows[1].startsWith("✓ "));
