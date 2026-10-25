@@ -65,34 +65,28 @@ function state(over: {
 }
 
 describe("statusLine", () => {
-	it("plain buffer shows `in <name>`", () => {
-		assert.equal(statusLine(state({})), "in main.ts");
+	// 状态行只有两个字形:哪个编辑器,以及当前文件是什么语言。文件名和选区行数
+	// 都放进 pillar 的气泡里,常驻宽度只留给这两个。
+	const NVIM = "\ue6ae";
+	const TS = "\ue8ca";
+
+	it("connected editor plus the file's language", () => {
+		assert.equal(statusLine(state({})), `${NVIM} ${TS}`);
 	});
 
-	it("fresh selection shows line count", () => {
-		// statusLine 内部用真实当前时间,选区时间戳必须相对 Date.now() 构造
-		const s = state({
+	it("ignores the selection: the pill keeps its width", () => {
+		const fresh = state({
 			selection: { text: "x", selected_at: Date.now() / 1000 - 10, startLine: 40, endLine: 45 },
 		});
-		assert.equal(statusLine(s), "6 lines selected in main.ts");
+		assert.equal(statusLine(fresh), `${NVIM} ${TS}`);
 	});
 
-	it("stale selection falls back to `in <name>`", () => {
-		const s = state({ selection: { text: "x", selected_at: Date.now() / 1000 - 3600 } });
-		assert.equal(statusLine(s), "in main.ts");
-	});
-
-	it("null selected_at counts as stale", () => {
-		const s = state({ selection: { text: "x", selected_at: null } });
-		assert.equal(statusLine(s), "in main.ts");
-	});
-
-	it("unnamed buffer (no file key at all) takes no status line", () => {
+	it("unnamed buffer (no file key at all) still shows the editor", () => {
 		// nvim 客户端的 nil 会让 file 整个 key 消失,不是 null
 		const raw = JSON.parse(
 			readFileSync(join(import.meta.dirname, "fixtures", "nvim-unnamed-buffer.json"), "utf-8"),
 		);
-		assert.equal(statusLine(raw), null);
+		assert.equal(statusLine(raw), NVIM);
 	});
 });
 

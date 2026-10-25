@@ -28,6 +28,8 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { appIcon, IDE_ICON, languageIcon } from "./icons.ts";
+import { registerStarlinePill } from "./starline-pill.ts";
 
 // ---- 协议类型(v0.2) ----
 
@@ -38,7 +40,7 @@ interface Position {
 	column: number | null;
 }
 
-interface Selection {
+export interface Selection {
 	start: Position;
 	end: Position;
 	text: string;
@@ -56,7 +58,7 @@ interface BufferState {
 	lines_total: number;
 }
 
-interface EditorState {
+export interface EditorState {
 	pid: number;
 	/** editor 进程的 working directory(不是它打开的文件所在目录) */
 	cwd: string;
@@ -120,7 +122,7 @@ function pidAlive(pid: number): boolean {
 	}
 }
 
-function isFreshSelection(sel: Selection, nowSec = Date.now() / 1000): boolean {
+export function isFreshSelection(sel: Selection, nowSec = Date.now() / 1000): boolean {
 	return typeof sel.selected_at === "number" && nowSec - sel.selected_at <= SELECTION_FRESH_SECONDS;
 }
 
@@ -212,7 +214,7 @@ export function pickerRows(live: EditorState[], connectedPid: number | null): st
 	});
 }
 
-function selectedLineCount(sel: Selection): number | null {
+export function selectedLineCount(sel: Selection): number | null {
 	if (sel.start.line === null || sel.end.line === null) return null;
 	return sel.end.line - sel.start.line + 1;
 }
@@ -306,19 +308,18 @@ function rebuildSelectionLineMap(ctx: ExtensionContext): void {
 
 // ---- 状态文本(纯 ASCII) ----
 
-export function statusLine(state: EditorState): string | null {
+/**
+ * 状态行:连上了哪个编辑器,以及当前文件是什么语言。
+ *
+ * 只放两个字形。pill 的宽度是硬约束,文件名和"选中了几行"都放进气泡——那里
+ * 一次只展开一个,多占的空间不常驻。无名 buffer 也照样显示编辑器图标:pill 是
+ * 常驻的,断开时也显示通用图标,让"有没有连上"一眼可见。
+ */
+export function statusLine(state: EditorState): string {
 	const buf = state.active_buffer;
-	if (!buf.file) return null; // 无名 buffer 不占状态行
-	const sel = buf.selection;
-	if (sel && isFreshSelection(sel)) {
-		const n = selectedLineCount(sel);
-		const selText =
-			n !== null
-				? `${n} line${n === 1 ? "" : "s"} selected in ${buf.name}`
-				: `selection in ${buf.name}`;
-		return selText;
-	}
-	return `in ${buf.name}`;
+	const app = appIcon(state.app);
+	if (!buf.file) return app;
+	return `${app} ${languageIcon(buf.language ?? undefined, buf.file ?? undefined)}`;
 }
 
 // ---- 格式化 LLM 上下文 ----
@@ -370,6 +371,8 @@ let connectedPid: number | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 /** session 期间持有的 ctx,供定时器调 ui */
 let activeCtx: ExtensionContext | null = null;
+/** starline pill 的注销函数;没装 starline 时是 no-op */
+let unregisterPill: (() => void) | null = null;
 /** 避免重复 notify / setStatus */
 let lastStatusKey: string | null = null;
 let lastLifecycleNotify: string | null = null;
@@ -398,7 +401,7 @@ function notifyOnce(
 function disconnect(ctx: ExtensionContext, reason: string) {
 	if (connectedPid === null) return;
 	connectedPid = null;
-	setStatus(ctx, null);
+	setStatus(ctx, IDE_ICON);
 	notifyOnce(ctx, `disconnect:${reason}`, reason, "info");
 }
 
@@ -444,8 +447,20 @@ const DISCONNECT_CHOICE = "✕ Disconnect";
 
 function disconnectIde(ctx: ExtensionContext): void {
 	connectedPid = null;
-	setStatus(ctx, null);
+	setStatus(ctx, IDE_ICON);
 	ctx.ui.notify("Disconnected from IDE.", "info");
+}
+
+/** 建立连接。命令行的 `/ide` 和 pill 里的切换行走同一条路。 */
+function connectTo(ctx: ExtensionContext, state: EditorState): void {
+	connectedPid = state.pid;
+	// 换了 editor 也要重发,即使文本恰好相同
+	lastStatusKey = null;
+	setStatus(ctx, statusLine(state));
+	ctx.ui.notify(
+		`Connected to ${state.app} (PID ${state.pid}) — ${state.active_buffer.name}`,
+		"info",
+	);
 }
 
 async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -484,12 +499,8 @@ async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void>
 	const idx = choices.indexOf(choice);
 	if (idx < 0 || idx >= live.length) return;
 
-	connectedPid = live[idx].pid;
-	lastStatusKey = null;
-	const buf = live[idx].active_buffer;
-	ctx.ui.notify(`Connected to ${live[idx].app} (PID ${connectedPid}) — ${buf.name}`, "info");
 	// 立即刷新状态行,不必等下一个 tick
-	setStatus(ctx, statusLine(live[idx]));
+	connectTo(ctx, live[idx]);
 }
 
 // ---- 扩展入口 ----
@@ -512,13 +523,30 @@ export default function (pi: ExtensionAPI) {
 		// 注意 reload 路径会先把 chat 渲染一遍再发 session_start,那一遍已经按空 map
 		// 缓存了;历史灰字要等下一次 chat 重建(窗口 resize 等)才出现,可接受。
 		rebuildSelectionLineMap(ctx);
+		// 常驻 pill:没连上也显示通用图标,点开才是编辑器列表。
+		if (connectedPid === null) setStatus(ctx, IDE_ICON);
 		// 不自动连接:轮询只为维护用户手动建立的连接
 		startPolling();
+		// starline 的 pill API 在 globalThis 上;没装时 registerStarlinePill 返回 no-op。
+		// 在这里注册:所有扩展都已加载(与加载顺序无关),`/reload` 后也会重跑。
+		unregisterPill?.();
+		unregisterPill = registerStarlinePill({
+			connectedPid: () => connectedPid,
+			readState,
+			scanLiveStates,
+			shortDir,
+			isFreshSelection,
+			selectedLineCount,
+			connect: connectTo,
+			disconnect: disconnectIde,
+		});
 	});
 
 	pi.on("session_shutdown", () => {
 		stopPolling();
 		pollTimer = null;
+		unregisterPill?.();
+		unregisterPill = null;
 		activeCtx = null;
 		connectedPid = null;
 		lastStatusKey = null;

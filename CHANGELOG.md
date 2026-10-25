@@ -9,6 +9,35 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [Unreleased]
+
+The status line becomes a pill you can click. It shows the connected editor and the
+file's language as two glyphs instead of a filename, stays visible while nothing is
+connected, and opens a picker with the other live editors and a disconnect row.
+
+### Changed
+
+- **The status text is two Nerd Font glyphs, not a filename.** It used to read
+  `in deep-q-learning.md` (or `5 lines selected in main.ts`), which spends permanent
+  footer width on a name that changes every time you switch buffers. It is now the
+  editor's own mark — Neovim, VS Code, Obsidian — followed by the current file's
+  language glyph. The bubble carries the name, the cursor and the selection. The
+  protocol is unchanged: the glyphs are chosen pi-side from `app` and
+  `active_buffer.language`.
+
+- **The status is always published.** A generic editor mark stands in while nothing
+  is connected, so the pill is a permanent target rather than appearing and
+  disappearing. Disconnecting returns to that mark instead of clearing the status.
+
+### Added
+
+- **Clicking the pill opens a picker** (with pi-starline 0.4+). It lists the
+  connected editor with its file, cursor and selection, every other live editor with
+  its own mark — click one to switch — and a `Disconnect` row. Add
+  `extensionStatus:pi-ide` to `pill.segments`; do not also set
+  `extensionStatuses.icons["pi-ide"]`, since the extension now publishes its own
+  glyphs and the static one would be a second icon in front.
+
 ## [0.4.2] - 2026-09-22
 
 Obsidian files are now injected with their real path, so the model can actually

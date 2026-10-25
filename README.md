@@ -67,7 +67,7 @@ pi starts (no IDE attached, ever)
 /ide → lists every live editor (nvim / VS Code / Obsidian), wherever it was
 started from — no project/cwd filtering; you pick the relevant one
   ↓
-status shows `in main.ts`; select lines → `5 lines selected in main.ts`
+status shows the editor's glyph plus the file's language glyph (` nvim · typescript`)
   ↓
 ask pi → context injected automatically (selection fresh for 60s)
   ↓
@@ -117,12 +117,23 @@ args (`argv`) so same-cwd instances can be told apart.
 **Pi side**: `before_agent_start` reads the JSON for the connected editor and injects
 formatted editor context (lightweight file/cursor/buffer every time; selection text
 only while fresh). Connecting is fully manual: `/ide` lists every live editor
-without project filtering, publishes `in main.ts` / `N lines selected in main.ts`
-through `ctx.ui.setStatus("pi-ide", …)`, and `/ide off` disconnects.
+without project filtering, and `/ide off` disconnects.
 
-With [pi-starline](https://github.com/Andy8647/pi-starline) installed, set
-`"extensionStatuses": { "placements": { "pi-ide": "editor" } }` to move that
-text to the editor's bottom-right metadata row instead of the footer.
+The status it publishes through `ctx.ui.setStatus("pi-ide", …)` is two Nerd Font
+glyphs: the connected editor's mark (Neovim, VS Code, Obsidian; a generic editor mark
+while nothing is connected, so the pill is always there) and the current file's
+language. No filename: the width is permanent, the name is not.
+
+With [pi-starline](https://github.com/Andy8647/pi-starline) 0.4 or newer, list it in
+`pill.segments` as `extensionStatus:pi-ide` and a click opens a bubble: the connected
+editor with its file, cursor and selection, every other live editor with its own mark
+(click one to switch), and a disconnect row. The extension publishes its own glyphs,
+so do **not** also set `extensionStatuses.icons["pi-ide"]` — that would add a second
+icon in front. Without Starline nothing changes: the status still shows in Pi's own
+footer, it is just not clickable. The same action is reachable as `/starline pi-ide`.
+
+To keep the status on the editor's bottom-right metadata row instead of a footer pill,
+set `"extensionStatuses": { "placements": { "pi-ide": "editor" } }`.
 
 Full protocol in [`docs/protocol.md`](docs/protocol.md).
 

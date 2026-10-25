@@ -42,8 +42,8 @@ marks" — and never guess from registers.
 
 The pi side defines one window, `SELECTION_FRESH_SECONDS = 60`:
 
-- selection `now - selected_at <= 60s` → **fresh**: injected in full, widget shows `N lines selected in <name>`
-- selection older → **stale**: treated as no selection; widget shows only `in <name>`, text is not injected
+- selection `now - selected_at <= 60s` → **fresh**: injected in full; the pi-side pill shows the selection in its bubble
+- selection older → **stale**: treated as no selection, text is not injected
 
 ## Fields
 
@@ -118,16 +118,22 @@ On every user prompt, while connected to a live editor with a real file:
 - Stale or absent selection → no selection section at all (matches Claude Code's
   chip disappearing).
 
-## Widget text (pi side)
+## Status text (pi side)
 
-Pure ASCII, no icons (Nerd Font independence). Truncated by the pi extension if
-the name is too long.
+Two Nerd Font glyphs and nothing else: the pill is permanent, so everything that
+changes width lives in the bubble instead.
 
-| State | Widget |
+| State | Status |
 |---|---|
-| Connected, fresh selection | `5 lines selected in main.ts` |
-| Connected, no/stale selection | `in main.ts` |
-| Editor dead or disconnected | (widget cleared) |
+| Connected, buffer has a file | editor glyph + language glyph (`U+E6AE U+E8CA` for Neovim + TypeScript) |
+| Connected, unnamed buffer | editor glyph only |
+| Editor dead or disconnected | generic editor glyph (`U+EAE3`) |
+
+The glyph is chosen pi-side from `app` (`nvim`, `vscode`, `obsidian`) and
+`active_buffer.language`, so the wire format is unchanged: clients keep sending
+the same fields. Language ids are what the clients already report — nvim's
+`filetype`, VS Code's `languageId`, Obsidian's `markdown` — with the filename
+extension as a fallback.
 
 ## Which project is this editor in? (pi side)
 
