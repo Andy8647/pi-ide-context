@@ -1,0 +1,97 @@
+name: Publish VS Code extension
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch'
+      && 'VS Code extension (manual run)'
+      || format('VS Code extension {0}', github.ref_name) }}
+
+# The editor client has its own version and its own listing, so it gets its own
+# tag namespace. `vscode/*` is deliberate: a `v*.*.*` tag would also match the npm
+# publish workflow's filter, which would then fail the tag/version check on a
+# version it does not own.
+on:
+  push:
+    tags:
+      - "vscode/*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and package, but do not publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-vscode
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # A Marketplace PAT cannot be scoped to this repository, so it lives in an
+    # environment with its own protection rules rather than as a plain secret.
+    environment: vscode-marketplace
+
+    defaults:
+      run:
+        working-directory: editors/vscode
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Check tag matches the extension version
+        if: github.event_name == 'push'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#vscode/}"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} implies version ${TAG}, but package.json says ${VERSION}. Delete the tag, fix the version, and tag again."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches extension version ${VERSION}."
+
+      # `vsce package` also runs `vscode:prepublish` (the esbuild step), runs the
+      # same validation the Marketplace does, and prints what went into the vsix.
+      - name: Package
+        run: npx --yes @vscode/vsce package --out extension.vsix
+
+      - name: Publish
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::No VSCE_PAT. Create a Marketplace token (Azure DevOps, scope: Marketplace → Manage) and save it as a secret in the vscode-marketplace environment."
+            exit 1
+          fi
+          npx --yes @vscode/vsce publish --packagePath extension.vsix -p "$VSCE_PAT"
+
+      - name: Explain what a manual dry run did and did not prove
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: |
+          {
+            echo "### Dry run complete"
+            echo
+            echo "Typechecked, built, and packaged the vsix with vsce's own validation."
+            echo
+            echo "**Not** verified: the upload. Only a real publish talks to the Marketplace,"
+            echo "so a green dry run does not prove the PAT or the publisher id."
+          } >> "$GITHUB_STEP_SUMMARY"

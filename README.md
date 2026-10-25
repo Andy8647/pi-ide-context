@@ -36,12 +36,18 @@ Then `/reload` in pi.
 
 ### VS Code extension
 
-Not published to the marketplace yet — build and install locally:
+From the Marketplace — search **pi-ide-context**, or:
+
+```bash
+code --install-extension AndyLuo.pi-ide-context-vscode
+```
+
+Building it locally still works, and is what hacking on the client needs:
 
 ```bash
 cd editors/vscode
 npm install && npm run build
-code --extensionDevelopmentPath="$PWD"   # dev instance, or package + install a vsix
+code --extensionDevelopmentPath="$PWD"
 ```
 
 ### Obsidian plugin

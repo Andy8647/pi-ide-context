@@ -2,7 +2,7 @@
 	"name": "pi-ide-context-vscode",
 	"displayName": "pi-ide-context",
 	"description": "Share your VS Code file, cursor and selection with pi — auto-injected editor context",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"publisher": "AndyLuo",
 	"license": "MIT",
 	"repository": {
@@ -15,6 +15,22 @@
 	"categories": [
 		"Other"
 	],
+	"keywords": [
+		"pi",
+		"pi-coding-agent",
+		"ai-agent",
+		"context",
+		"editor-context"
+	],
+	"icon": "./icon.png",
+	"galleryBanner": {
+		"color": "#1e1e2e",
+		"theme": "dark"
+	},
+	"homepage": "https://github.com/Andy8647/pi-ide-context#readme",
+	"bugs": {
+		"url": "https://github.com/Andy8647/pi-ide-context/issues"
+	},
 	"activationEvents": [
 		"onStartupFinished"
 	],
