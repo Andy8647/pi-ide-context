@@ -1,6 +1,6 @@
 {
 	"name": "pi-ide-context",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"description": "/ide for pi — connect Neovim, VS Code or Obsidian and inject the file, cursor and selection into every prompt",
 	"keywords": [
 		"pi-package",

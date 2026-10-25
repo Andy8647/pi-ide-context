@@ -9,6 +9,24 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.5.1] - 2026-10-25
+
+The npm card now looks like the project. No behaviour changed.
+
+### Added
+
+- **A cover.** `assets/cover.svg` is the same 16:9 layout pi-tidy uses — name,
+  pitch, four claims, install line, and one panel showing the picked lines
+  turning into the block the next prompt carries. The PNG next to it is the same
+  file rendered at 2x, and `pi.image` points at it, so the pi package listing and
+  the README both start with the same picture.
+
+### Changed
+
+- **The npm listing describes the whole extension.** The description names
+  Obsidian, the keywords cover the three editors and the feature, and `homepage`
+  is no longer empty.
+
 ## [0.5.0] - 2026-10-25
 
 The status line becomes a pill you can click. It shows the connected editor and the
