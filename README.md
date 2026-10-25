@@ -1,5 +1,9 @@
 # pi-ide-context
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Andy8647/pi-ide-context/main/assets/cover.png" alt="pi-ide-context — your cursor and selection, already in the prompt" width="840">
+</p>
+
 > `/ide` for pi — like Claude Code's IDE integration, but for Neovim, VS Code and Obsidian.
 
 [![npm version](https://img.shields.io/npm/v/pi-ide-context)](https://www.npmjs.com/package/pi-ide-context)

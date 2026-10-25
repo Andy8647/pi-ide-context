@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>pi-ide-context — your cursor and selection, already in the prompt</title>
+  <!-- pi-ide-context cover — catppuccin mocha, 16:9, same language as pi-tidy's.
+       Right panel: what the extension reads (a note with a selection) and the
+       block that then rides along with the next prompt. Text is real Maple Mono,
+       so the columns line up.
+
+       Reproduce the PNG: rsvg-convert -z 2 assets/cover.svg -o assets/cover.png -->
+  <rect width="1280" height="720" fill="#11111b"/>
+
+  <!-- Left: name, pitch, install -->
+  <g font-family="Maple Mono NF, Menlo, monospace">
+    <text x="72" y="238" font-size="44" font-weight="700" fill="#cdd6f4">pi-ide-context</text>
+    <rect x="74" y="262" width="64" height="5" rx="2.5" fill="#89dceb"/>
+
+    <text x="72" y="318" font-size="25" fill="#cdd6f4">Your cursor and selection,</text>
+    <text x="72" y="352" font-size="25" fill="#cdd6f4">already in the prompt</text>
+
+    <g font-size="18" fill="#a6adc8">
+      <text x="72" y="418"><tspan fill="#89dceb">▸</tspan>  Neovim, VS Code, Obsidian</text>
+      <text x="72" y="450"><tspan fill="#a6e3a1">✓</tspan>  file, cursor and selection injected</text>
+      <text x="72" y="482"><tspan fill="#cba6f7">◐</tspan>  a selection stays fresh for 60s</text>
+      <text x="72" y="514"><tspan fill="#f38ba8">✗</tspan>  nothing to copy, nothing to type</text>
+    </g>
+
+    <rect x="72" y="574" width="356" height="44" rx="10" fill="#1e1e2e" stroke="#313244"/>
+    <text x="92" y="602" font-size="18" fill="#6c7086">$ <tspan fill="#cdd6f4">pi install npm:pi-ide-context</tspan></text>
+  </g>
+
+  <!-- Right: the editor above, what reaches the prompt below -->
+  <rect x="500" y="86" width="708" height="554" rx="16" fill="#1e1e2e" stroke="#313244" stroke-width="1.5"/>
+  <line x1="500" y1="128" x2="1208" y2="128" stroke="#313244" stroke-width="1.5"/>
+  <circle cx="528" cy="107" r="6" fill="#45475a"/>
+  <circle cx="550" cy="107" r="6" fill="#45475a"/>
+  <circle cx="572" cy="107" r="6" fill="#45475a"/>
+  <text x="854" y="113" font-family="Maple Mono NF, Menlo, monospace" font-size="14" fill="#6c7086" text-anchor="middle">~/vault · obsidian</text>
+
+  <!-- The note, with the picked lines lit up -->
+  <g font-family="Maple Mono NF, Menlo, monospace" font-size="16" xml:space="preserve">
+    <text x="528" y="164" fill="#6c7086">deep-q-learning.md</text>
+
+    <text x="528" y="200" fill="#6c7086">  41</text><text x="580" y="200" fill="#cdd6f4">## Bellman</text>
+    <text x="528" y="226" fill="#6c7086">  42</text><text x="580" y="226" fill="#a6adc8">The update rule trades the</text>
+
+    <rect x="572" y="238" width="600" height="82" rx="4" fill="#313244"/>
+    <text x="528" y="256" fill="#6c7086">  43</text><text x="580" y="256" fill="#cdd6f4">immediate reward against the</text>
+    <text x="528" y="282" fill="#6c7086">  44</text><text x="580" y="282" fill="#cdd6f4">best value of the next state.</text>
+    <text x="528" y="308" fill="#6c7086">  45</text><text x="580" y="308" fill="#cdd6f4">A discount factor below one</text>
+
+    <text x="528" y="334" fill="#6c7086">  46</text><text x="580" y="334" fill="#a6adc8">keeps the sum finite.</text>
+  </g>
+  <text x="1150" y="252" font-family="Maple Mono NF, Menlo, monospace" font-size="13" fill="#89dceb" text-anchor="end">3 lines selected</text>
+
+  <!-- What the next prompt carries -->
+  <line x1="854" y1="356" x2="854" y2="378" stroke="#45475a" stroke-width="1.5"/>
+  <path d="M854 384 l-6 -9 h12 z" fill="#45475a"/>
+  <text x="854" y="404" font-family="Maple Mono NF, Menlo, monospace" font-size="13" fill="#6c7086" text-anchor="middle">sent with the next prompt</text>
+
+  <g font-family="Maple Mono NF, Menlo, monospace" font-size="15" xml:space="preserve">
+    <rect x="524" y="420" width="660" height="150" rx="10" fill="#181825" stroke="#313244"/>
+    <text x="548" y="450" fill="#89dceb" font-weight="700">### IDE Context</text>
+    <text x="548" y="476" fill="#6c7086">- <tspan fill="#a6adc8">File</tspan>: deep-q-learning.md</text>
+    <text x="548" y="498" fill="#6c7086">- <tspan fill="#a6adc8">Language</tspan>: markdown</text>
+    <text x="548" y="520" fill="#6c7086">- <tspan fill="#a6adc8">Cursor</tspan>: line 43, column 51</text>
+    <text x="548" y="542" fill="#6c7086">- <tspan fill="#a6adc8">Buffer</tspan>: 454 lines</text>
+    <text x="548" y="564" fill="#6c7086">- <tspan fill="#a6adc8">Selection</tspan>: 3 lines, verbatim</text>
+  </g>
+
+  <!-- The bar itself: two dull segments, then the one this extension owns -->
+  <text x="524" y="600" font-family="Maple Mono NF, Menlo, monospace" font-size="13" fill="#6c7086">the same status, in the footer</text>
+
+  <rect x="524" y="612" width="110" height="24" rx="6" fill="#585b70"/>
+  <text x="579" y="629" font-family="Maple Mono NF, Menlo, monospace" font-size="13" fill="#cdd6f4" text-anchor="middle">sonnet-4.5</text>
+
+  <rect x="642" y="612" width="118" height="24" rx="6" fill="#585b70"/>
+  <text x="701" y="629" font-family="Maple Mono NF, Menlo, monospace" font-size="13" fill="#cdd6f4" text-anchor="middle">pi-starline</text>
+
+  <rect x="768" y="612" width="184" height="24" rx="6" fill="#cba6f7"/>
+  <text x="860" y="629" font-family="Maple Mono NF, Menlo, monospace" font-size="13" fill="#11111b" font-weight="700" text-anchor="middle">obsidian  markdown</text>
+
+  <rect x="960" y="612" width="120" height="24" rx="6" fill="#585b70"/>
+  <text x="1020" y="629" font-family="Maple Mono NF, Menlo, monospace" font-size="13" fill="#cdd6f4" text-anchor="middle">47%  1.2M</text>
+</svg>

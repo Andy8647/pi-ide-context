@@ -1,13 +1,17 @@
 {
 	"name": "pi-ide-context",
 	"version": "0.5.0",
-	"description": "/ide for pi — connect Neovim/VS Code, auto-inject editor context into LLM messages",
+	"description": "/ide for pi — connect Neovim, VS Code or Obsidian and inject the file, cursor and selection into every prompt",
 	"keywords": [
 		"pi-package",
 		"pi-extension",
+		"pi-coding-agent",
 		"neovim",
+		"vscode",
+		"obsidian",
 		"ide",
-		"editor-context"
+		"editor-context",
+		"context-injection"
 	],
 	"author": "Andy8647",
 	"license": "MIT",
@@ -15,10 +19,12 @@
 		"type": "git",
 		"url": "git+https://github.com/Andy8647/pi-ide-context.git"
 	},
+	"homepage": "https://github.com/Andy8647/pi-ide-context#readme",
 	"pi": {
 		"extensions": [
 			"./src/index.ts"
-		]
+		],
+		"image": "https://raw.githubusercontent.com/Andy8647/pi-ide-context/main/assets/cover.png"
 	},
 	"files": [
 		"src/",

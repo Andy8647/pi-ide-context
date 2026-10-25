@@ -57,7 +57,6 @@ function targets(body: ReturnType<typeof bubbleContent>["body"]) {
 
 const NVIM = "\ue6ae";
 const VSCODE = "\uec29";
-const TS = "\ue8ca";
 
 test("one row carries the editor, directory, file, cursor and selection", () => {
 	const state = editor({ active_buffer: { ...editor().active_buffer, selection: selection() } });
