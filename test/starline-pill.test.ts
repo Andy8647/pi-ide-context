@@ -127,25 +127,40 @@ test("one app, several products: the bubble names the product, not the vendor", 
 	assert.equal(row?.text, `\u25b8 \ue7bd DataGrip · other · main.ts`);
 });
 
-test("a bubble lists a handful of editors, then says how many it hid", () => {
-	// /ide 会列出全部;气泡是惊鸿一瞬,列 5 个之后要说清楚还有多少个。
+test("a bubble lists every live editor, and only caps itself past a dozen", () => {
+	// /ide 会列出全部;气泡也没有高度预算,所以常见规模下就该全列。
 	const connected = editor();
-	const others = Array.from({ length: 7 }, (_, i) =>
+	const sevenOthers = Array.from({ length: 7 }, (_, i) =>
 		editor({ pid: 200 + i, cwd: `/Users/andy/p${i}`, timestamp: 1_700_000_000 - i }),
+	);
+	const content = bubbleContent(connected, [connected, ...sevenOthers], connected.pid, deps(), ctx);
+
+	const rows = targets(content.body).filter((line) => line.text.startsWith("\u25b8"));
+	assert.equal(rows.length, 7);
+	assert.ok(
+		!content.body.some((line) =>
+			String(typeof line === "string" ? line : line.text).includes("more"),
+		),
+	);
+});
+
+test("past a dozen, the bubble says how many it hid and opens the picker", () => {
+	const connected = editor();
+	const fifteenOthers = Array.from({ length: 15 }, (_, i) =>
+		editor({ pid: 300 + i, cwd: `/Users/andy/q${i}`, timestamp: 1_700_000_000 - i }),
 	);
 	let opened = 0;
 	const content = bubbleContent(
 		connected,
-		[connected, ...others],
+		[connected, ...fifteenOthers],
 		connected.pid,
 		deps({ openPicker: () => opened++ }),
 		ctx,
 	);
 
 	const switchRows = targets(content.body).filter((line) => line.text.startsWith("\u25b8"));
-	// 5 个编辑器 + 1 行溢出提示
-	assert.equal(switchRows.length, 6);
-	assert.equal(switchRows.at(-1)?.text, "\u25b8 \u2026and 2 more \u00b7 /ide");
+	assert.equal(switchRows.length, 13); // 12 editors + the overflow row
+	assert.equal(switchRows.at(-1)?.text, "\u25b8 \u2026and 3 more \u00b7 /ide");
 
 	switchRows.at(-1)?.onSelect();
 	assert.equal(opened, 1);

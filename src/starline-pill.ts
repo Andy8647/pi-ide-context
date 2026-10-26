@@ -57,8 +57,13 @@ function pillApi(): StarlinePillApi | undefined {
 
 /** How often an open bubble re-reads the state files. */
 const LIVE_TICK_MS = 1_000;
-/** Rows for other live editors; a bubble is a glance, not a picker. */
-const MAX_OTHER_ROWS = 5;
+/**
+ * A ceiling, not a glance limit: a real setup is two to five editors, and the bubble
+ * has no height budget of its own — Starline only clamps its width — so listing them
+ * all costs a few rows. The cap only keeps a farm of editors from drawing a bubble
+ * taller than the screen; past it the overflow row opens `/ide`.
+ */
+const MAX_OTHER_ROWS = 12;
 /**
  * Starline sizes the bubble to its longest row and clamps the bubble at 64 columns,
  * drawing a 4-column frame around the body (`pillBubbleWidth` in pi-starline). So a
