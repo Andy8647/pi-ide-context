@@ -4,12 +4,12 @@
   <img src="https://raw.githubusercontent.com/Andy8647/pi-ide-context/main/assets/cover.png" alt="pi-ide-context — your cursor and selection, already in the prompt" width="840">
 </p>
 
-> `/ide` for pi — like Claude Code's IDE integration, but for Neovim, VS Code and Obsidian.
+> `/ide` for pi — like Claude Code's IDE integration, but for Neovim, VS Code, Obsidian and JetBrains IDEs.
 
 [![npm version](https://img.shields.io/npm/v/pi-ide-context)](https://www.npmjs.com/package/pi-ide-context)
 [![GitHub](https://img.shields.io/badge/github-Andy8647/pi--ide--context-blue)](https://github.com/Andy8647/pi-ide-context)
 
-Select text in Neovim (or VS Code / Obsidian), switch to pi — pi already knows which
+Select text in Neovim (or VS Code / Obsidian / WebStorm), switch to pi — pi already knows which
 file you're in, where your cursor is, and what you selected. No copy-paste. No
 `:PiAsk`. It just works.
 
@@ -66,6 +66,22 @@ cp main.js manifest.json "<vault>/.obsidian/plugins/pi-ide-context/"
 ```
 
 Then enable **pi-ide-context** under Settings → Community plugins.
+
+### JetBrains IDEs (WebStorm / PyCharm / IDEA / DataGrip)
+
+Bleeding edge: the plugin builds but is not published yet, so install it from
+GitHub Releases → `pi-ide-context-jetbrains-<version>.zip` via
+Settings → Plugins → ⚙ → **Install Plugin from Disk…**, then restart. One build
+loads in every JetBrains IDE; the status pill shows the JetBrains mark.
+
+```bash
+cd editors/jetbrains
+./gradlew buildPlugin        # zip lands in build/distributions/
+```
+
+See [`editors/jetbrains/README.md`](editors/jetbrains/README.md) for the
+`-PlocalIdePath` shortcut and the known limitations (one state file per IDE
+process, so the last window you touched wins).
 
 ## Usage
 

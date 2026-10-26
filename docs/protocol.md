@@ -70,7 +70,8 @@ The pi side defines one window, `SELECTION_FRESH_SECONDS = 60`:
 | `pid` | number | Editor process id; pi checks liveness with `kill(pid, 0)` |
 | `cwd` | string | The editor process's working directory (not the directory of the active file). For Obsidian it is the vault root — the base a relative `active_buffer.file` resolves against. pi uses it — together with `active_buffer.file` and `argv` — to decide which project the editor belongs to, see below |
 | `timestamp` | number | Unix seconds of last write (informational) |
-| `app` | string | Editor kind: `"nvim"`, `"vscode"`, `"obsidian"` (future) |
+| `app` | string | Editor kind: `"nvim"`, `"vscode"`, `"obsidian"`, `"jetbrains"` (all JetBrains IDEs report this one value) |
+| `product` | string (optional) | The specific product behind `app`, e.g. `"WebStorm"` / `"PyCharm"` / `"DataGrip"`. pi picks the status glyph and the `/ide` display name from it; without it every JetBrains IDE would read `jetbrains`. Unknown products fall back to the `app` mark |
 | `argv` | string[] (optional) | Launch args without argv[0], e.g. `["pi-ide-context/"]` from `nvim pi-ide-context/`. Stable per instance — disambiguates same-cwd editors. Entries may be flags, plain file names or non-existent paths; pi only counts one as project evidence when it resolves to an existing directory |
 | `active_buffer.file` | string \| null | Absolute path; relative (vault/workspace-relative) when the host has no absolute path — Obsidian writes vault-relative paths like `Notes/foo.md`. pi resolves a relative path against `cwd` **before injecting**, so the block the model sees always carries a readable absolute path. `null` for unnamed buffers |
 | `active_buffer.name` | string | Display name (basename for files) |
@@ -129,7 +130,7 @@ changes width lives in the bubble instead.
 | Connected, unnamed buffer | editor glyph only |
 | Editor dead or disconnected | generic editor glyph (`U+EAE3`) |
 
-The glyph is chosen pi-side from `app` (`nvim`, `vscode`, `obsidian`) and
+The glyph is chosen pi-side from `app` (`nvim`, `vscode`, `obsidian`, `jetbrains`) and
 `active_buffer.language`, so the wire format is unchanged: clients keep sending
 the same fields. Language ids are what the clients already report — nvim's
 `filetype`, VS Code's `languageId`, Obsidian's `markdown` — with the filename
@@ -166,6 +167,13 @@ claim every project under it.
 - VS Code and Obsidian clients write this same JSON (see `editors/vscode/` and
   `editors/obsidian/`). The pi extension is editor-agnostic — it reads whatever
   editor wrote the file and never asks which one.
+- **JetBrains IDEs are the exception to one-file-per-process**: a single IDE
+  process hosts every open project window, so all windows share one `pid`. The
+  JetBrains client (`editors/jetbrains/`) therefore writes one file for the last
+  window the user touched, and sends `product` (`"WebStorm"`) plus
+  `argv: ["WebStorm 2026.2.3", "<project>"]` as the instance fingerprint.
+  Tracking several windows at once needs a multi-instance
+  state file name, which is not in v0.2.
 
 ## Changelog
 

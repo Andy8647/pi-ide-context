@@ -1,0 +1,21 @@
+<idea-plugin>
+	<id>dev.andy.pi-ide-context</id>
+	<name>pi-ide-context</name>
+	<vendor url="https://github.com/Andy8647/pi-ide-context">Andy8647</vendor>
+
+	<description><![CDATA[
+		Shares the active file, cursor position and current selection with
+		<a href="https://github.com/Andy8647/pi-ide-context">pi</a>, so every prompt
+		carries the code you are actually looking at.
+		<br/><br/>
+		Writes the same state file protocol the Neovim, VS Code and Obsidian clients
+		use; no network, no telemetry, nothing leaves the machine.
+	]]></description>
+
+	<!-- 平台级 API only:同一份产物可装进 WebStorm / PyCharm / IDEA / DataGrip 等 -->
+	<depends>com.intellij.modules.platform</depends>
+
+	<extensions defaultExtensionNs="com.intellij">
+		<postStartupActivity implementation="dev.andy.piide.PiIdeStartup"/>
+	</extensions>
+</idea-plugin>
