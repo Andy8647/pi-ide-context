@@ -7,7 +7,10 @@ plugins {
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 
 group = "dev.andy"
-version = "0.1.0"
+// CI overrides it from the tag: `-PpluginVersion=0.6.1`. The Marketplace only rejects
+// duplicates, not gaps, so tracking the repo tag is the simplest honest mapping: the
+// plugin and the npm package ship together.
+version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
 
 // 只依赖 IntelliJ Platform 通用 API(<depends>com.intellij.modules.platform</depends>),
 // 所以同一个 zip 能装进 WebStorm / PyCharm / IDEA / DataGrip / GoLand。
@@ -76,5 +79,9 @@ intellijPlatform {
 		}
 	}
 
-	// 磁盘安装(GitHub release zip)不需要签名;上传 Marketplace 时由 JetBrains 代为签名
+	// 磁盘安装(GitHub release zip)不需要签名;上传 Marketplace 时由 JetBrains 代为签名。
+	// token 走环境变量(CI secret),不进仓库;channel 留空 = Stable。
+	publishing {
+		token = providers.environmentVariable("JETBRAINS_MARKETPLACE_TOKEN")
+	}
 }

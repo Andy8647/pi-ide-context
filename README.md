@@ -69,10 +69,14 @@ Then enable **pi-ide-context** under Settings → Community plugins.
 
 ### JetBrains IDEs (WebStorm / PyCharm / IDEA / DataGrip / GoLand …)
 
-Not on the JetBrains Marketplace yet: grab `pi-ide-context-jetbrains-<version>.zip`
-from the [latest release](https://github.com/Andy8647/pi-ide-context/releases) and
-install it via Settings → Plugins → ⚙ → **Install Plugin from Disk…**, then
-restart. One build loads in every JetBrains IDE.
+Submitted to the JetBrains Marketplace; the listing is in review. **Until it is
+approved**, install `pi-ide-context-jetbrains-<version>.zip` from the [latest
+release](https://github.com/Andy8647/pi-ide-context/releases) via Settings →
+Plugins → ⚙ → **Install Plugin from Disk…**, then restart. After approval it is
+one search away: Settings → Plugins → Marketplace → **pi-ide-context**.
+
+One build loads in every JetBrains IDE, because it depends on
+`com.intellij.modules.platform` and nothing else.
 
 ![The /ide picker listing seven live editors — DataGrip, WebStorm, IntelliJ IDEA, PyCharm, Neovim, VS Code and Obsidian — each with its own mark and product name](https://raw.githubusercontent.com/Andy8647/pi-ide-context/main/assets/picker.png)
 

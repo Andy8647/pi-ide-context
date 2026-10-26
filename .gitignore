@@ -6,5 +6,9 @@ editors/obsidian/main.js
 
 .DS_Store
 
+# Scratch: browser snapshots and generated upload payloads
+.browser-state/
+.inject-zip.js
+
 # Working notes, not product
 HANDOFF.md
