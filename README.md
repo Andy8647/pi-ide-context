@@ -67,12 +67,19 @@ cp main.js manifest.json "<vault>/.obsidian/plugins/pi-ide-context/"
 
 Then enable **pi-ide-context** under Settings → Community plugins.
 
-### JetBrains IDEs (WebStorm / PyCharm / IDEA / DataGrip)
+### JetBrains IDEs (WebStorm / PyCharm / IDEA / DataGrip / GoLand …)
 
-Bleeding edge: the plugin builds but is not published yet, so install it from
-GitHub Releases → `pi-ide-context-jetbrains-<version>.zip` via
-Settings → Plugins → ⚙ → **Install Plugin from Disk…**, then restart. One build
-loads in every JetBrains IDE; the status pill shows the JetBrains mark.
+Not on the JetBrains Marketplace yet: grab `pi-ide-context-jetbrains-<version>.zip`
+from the [latest release](https://github.com/Andy8647/pi-ide-context/releases) and
+install it via Settings → Plugins → ⚙ → **Install Plugin from Disk…**, then
+restart. One build loads in every JetBrains IDE.
+
+![The /ide picker listing seven live editors — DataGrip, WebStorm, IntelliJ IDEA, PyCharm, Neovim, VS Code and Obsidian — each with its own mark and product name](https://raw.githubusercontent.com/Andy8647/pi-ide-context/main/assets/picker.png)
+
+Seven editors at once, each with its own mark: the `product` field is what tells
+WebStorm from DataGrip, since every JetBrains IDE reports the same `app`. A
+table view in DataGrip also carries the schema it is showing — table, primary
+key, columns, foreign keys, the active filter and the selected cell.
 
 ```bash
 cd editors/jetbrains

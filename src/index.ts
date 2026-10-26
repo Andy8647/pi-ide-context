@@ -21,8 +21,7 @@
  * 的扩展状态行里。
  */
 
-import { appendFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type {
 	ExtensionAPI,
@@ -124,19 +123,27 @@ const SELECTION_ENTRY_TEXT_MAX = 200;
 
 // ---- 工具 ----
 
-async function readState(pid: number): Promise<EditorState | null> {
+/**
+ * 这些状态文件只有几百字节,所以一律同步读。
+ *
+ * 实测:在长 session 里 `fs/promises` 的 `readdir` 回调能排队 ~900ms(主线程是空闲的,
+ * 0ms 定时器 30ms 就跑,只有 fs 的 promise 迟迟不 resolve),同步读同一批文件是 0.1ms。
+ * 没理由为几百字节去借线程池。
+ */
+function readState(pid: number): Promise<EditorState | null> {
 	try {
-		const raw = await readFile(join(STATE_DIR, `${pid}.json`), "utf-8");
-		return JSON.parse(raw) as EditorState;
+		return Promise.resolve(
+			JSON.parse(readFileSync(join(STATE_DIR, `${pid}.json`), "utf-8")) as EditorState,
+		);
 	} catch {
-		return null;
+		return Promise.resolve(null);
 	}
 }
 
 /** 所有存活的 editor 状态(pid 活着 + 状态文件可读),不做任何过滤 */
 async function scanLiveStates(): Promise<EditorState[]> {
 	try {
-		const entries = await readdir(STATE_DIR);
+		const entries = readdirSync(STATE_DIR);
 		const states: EditorState[] = [];
 		for (const e of entries) {
 			if (!e.endsWith(".json")) continue;
