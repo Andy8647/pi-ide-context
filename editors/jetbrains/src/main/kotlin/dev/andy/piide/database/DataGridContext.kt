@@ -70,7 +70,7 @@ class DataGridContext : DatabaseContextProvider {
 
 	private fun columns(shown: List<com.intellij.database.model.DasColumn>): String {
 		val json = shown.joinToString(",") { column ->
-			val type = runCatching { column.dataType?.typeName }.getOrNull()
+			val type = runCatching { column.dasType?.toDataType()?.typeName }.getOrNull()
 			"{\"name\":${quote(column.name)}" + (type?.let { ",\"type\":${quote(it)}" } ?: "") + "}"
 		}
 		return "\"columns\":[$json]"
@@ -115,7 +115,7 @@ class DataGridContext : DatabaseContextProvider {
 		(dasColumn?.name ?: gridColumn?.let { runCatching { it.name }.getOrNull() })?.let {
 			parts += field("column", it)
 		}
-		runCatching { dasColumn?.dataType?.typeName }.getOrNull()?.let { parts += field("type", it) }
+		runCatching { dasColumn?.dasType?.toDataType()?.typeName }.getOrNull()?.let { parts += field("type", it) }
 		parts += field("value", literal(raw))
 		return "\"cell\":{" + parts.filter { it.isNotBlank() }.joinToString(",") + "}"
 	}
