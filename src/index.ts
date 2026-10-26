@@ -21,6 +21,7 @@
  * 的扩展状态行里。
  */
 
+import { appendFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type {
@@ -114,6 +115,8 @@ const STATE_DIR = `${process.env.XDG_RUNTIME_DIR ?? join("/tmp")}/pi-ide`;
 const SELECTION_FRESH_SECONDS = 60;
 /** 连接状态轮询间隔 */
 const POLL_MS = 1000;
+/** live 列表(所有存活 editor)的扫描间隔,单位是 poll tick。 */
+const LIVE_SCAN_EVERY = 3;
 /** 聊天记录里 selection 展示的 custom entry 类型(不进 LLM context,仅展示) */
 const SELECTION_ENTRY_TYPE = "pi-ide-selection";
 /** 存进 entry 的 selection 文本上限:展示只占一行,没必要把整段选区写进 session 文件 */
@@ -487,6 +490,7 @@ function notifyOnce(
 function disconnect(ctx: ExtensionContext, reason: string) {
 	if (connectedPid === null) return;
 	connectedPid = null;
+	cachedState = null;
 	setStatus(ctx, IDE_ICON);
 	notifyOnce(ctx, `disconnect:${reason}`, reason, "info");
 }
@@ -495,12 +499,40 @@ function disconnect(ctx: ExtensionContext, reason: string) {
 // 轮询只维护已建立的连接(刷新状态行、发现 editor 死了就断开)。
 // 不做任何自动发现/自动连接:连不连、连哪个,都由 /ide 决定。
 
+/**
+ * 最近一次轮询拿到的快照。
+ *
+ * 点击要**同步**开气泡:实测宿主在我 `await` 的时候会插一帧渲染,一帧就是几百毫秒
+ * (大 session),气泡于是等在那里。所以点击路径不许有 await,先把快照画出来,
+ * 再在后台重新读盘、有变化才 refresh。
+ */
+let cachedState: EditorState | null = null;
+let cachedLive: EditorState[] = [];
+/** live 列表比单个 state 贵一条 readdir:N 次 readFile,所以隔几个 tick 扫一次。 */
+let pollsSinceLiveScan = LIVE_SCAN_EVERY;
+
+function rememberLive(states: EditorState[]): EditorState[] {
+	cachedLive = states;
+	pollsSinceLiveScan = 0;
+	return states;
+}
+
 async function pollTick() {
 	const ctx = activeCtx;
-	if (!ctx || connectedPid === null) return;
+	if (!ctx) return;
+
+	if (pollsSinceLiveScan >= LIVE_SCAN_EVERY) {
+		pollsSinceLiveScan = 0;
+		// 失败就保持旧快照:气泡先画旧数据,总比等一帧好
+		await scanLiveStates().then(rememberLive, () => {});
+	}
+	pollsSinceLiveScan++;
+
+	if (connectedPid === null) return;
 
 	const s = await readState(connectedPid);
 	if (s && pidAlive(connectedPid)) {
+		cachedState = s;
 		setStatus(ctx, statusLine(s));
 		lastLifecycleNotify = null; // 编辑器恢复后允许再次提示断连
 		return;
@@ -533,6 +565,7 @@ const DISCONNECT_CHOICE = "✕ Disconnect";
 
 function disconnectIde(ctx: ExtensionContext): void {
 	connectedPid = null;
+	cachedState = null;
 	setStatus(ctx, IDE_ICON);
 	ctx.ui.notify("Disconnected from IDE.", "info");
 }
@@ -540,6 +573,8 @@ function disconnectIde(ctx: ExtensionContext): void {
 /** 建立连接。命令行的 `/ide` 和 pill 里的切换行走同一条路。 */
 function connectTo(ctx: ExtensionContext, state: EditorState): void {
 	connectedPid = state.pid;
+	cachedState = state;
+	cachedLive = [state, ...cachedLive.filter((live) => live.pid !== state.pid)];
 	// 换了 editor 也要重发,即使文本恰好相同
 	lastStatusKey = null;
 	setStatus(ctx, statusLine(state));
@@ -550,10 +585,31 @@ function connectTo(ctx: ExtensionContext, state: EditorState): void {
 }
 
 /**
+ * `PI_IDE_DEBUG=1` 时把 /ide 这几步的耗时写进日志,用来分清「我们的数据」和
+ * 「宿主的渲染」——两边都不该是黑箱。
+ */
+function noteIdeTiming(message: string): void {
+	if (process.env.PI_IDE_DEBUG !== "1") return;
+	try {
+		appendFileSync("/tmp/pi-ide/debug.log", `${new Date().toISOString()} ${message}\n`);
+	} catch {
+		// 诊断日志失败不能影响命令
+	}
+}
+
+/**
  * 列出所有存活 editor 并选择连接。 `/ide` 和气泡里的「还有 N 个」行走同一条路。
  */
 async function pickIde(ctx: ExtensionContext): Promise<void> {
-	const live = (await scanLiveStates()).sort((a, b) => b.timestamp - a.timestamp);
+	const startedAt = performance.now();
+	// 有快照就用快照(最多 3 秒旧):等待盘会让宿主插一帧,而一帧在大 session 上是几百毫秒。
+	const live = rememberLive(
+		(cachedLive.length > 0 ? [...cachedLive] : await scanLiveStates()).sort(
+			(a, b) => b.timestamp - a.timestamp,
+		),
+	);
+	const scannedAt = performance.now();
+	noteIdeTiming(`/ide scan: ${live.length} editors in ${(scannedAt - startedAt).toFixed(1)}ms`);
 	if (live.length === 0) {
 		ctx.ui.notify(
 			"No running editors found. Start Neovim / VS Code / Obsidian with the pi-ide client, then run /ide again.",
@@ -563,10 +619,26 @@ async function pickIde(ctx: ExtensionContext): Promise<void> {
 	}
 
 	const choices = pickerRows(live, connectedPid);
+	// 只活一个编辑器时,没必要为一个只有一项的浮层做一次全屏重绘:用户已经明确打了 /ide。
+	// (一个都没有、或者已经连着它(还可能想断开)时,还是把选择器给他。)
+	const only = live.length === 1 ? live[0] : undefined;
+	if (only && only.pid !== connectedPid) {
+		connectTo(ctx, only);
+		return;
+	}
 	// 已连接时在末尾提供断开行:命令行的 /ide off 不总是想得起来
 	if (connectedPid !== null) choices.push(DISCONNECT_CHOICE);
 
 	const choice = await ctx.ui.select(`Select IDE to connect (${live.length} found):`, choices);
+	// 选择器已经把控制权交给 UI 了:这个 0ms 定时器如果真的 0ms 就跑,说明同步渲染
+	// 不占地;它拖了很久才跑,才是宿主渲染路径的代价。
+	setTimeout(
+		() =>
+			noteIdeTiming(
+				`event loop free ${(performance.now() - scannedAt).toFixed(1)}ms after opening the picker`,
+			),
+		0,
+	);
 	if (choice === undefined) return; // 取消
 
 	if (choice === DISCONNECT_CHOICE) {
@@ -631,6 +703,7 @@ export default function (pi: ExtensionAPI) {
 			connect: connectTo,
 			disconnect: disconnectIde,
 			openPicker: (ctx) => void pickIde(ctx),
+			snapshot: () => ({ state: cachedState, live: cachedLive }),
 		});
 	});
 

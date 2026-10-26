@@ -45,6 +45,7 @@ function deps(overrides: Partial<PillDeps> = {}): PillDeps {
 		connect: () => {},
 		disconnect: () => {},
 		openPicker: () => {},
+		snapshot: () => ({ state: null, live: [] }),
 		...overrides,
 	};
 }

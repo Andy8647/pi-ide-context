@@ -16,9 +16,27 @@
  * module never participates in a cycle with `index.ts`.
  */
 
+import { appendFileSync } from "node:fs";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { appIcon, appName } from "./icons.ts";
 import type { EditorState, Selection } from "./index.ts";
+
+// ---- 延迟诊断 ----
+
+/**
+ * `PI_IDE_DEBUG=1` 时把点击路径的计时写进 `/tmp/pi-ide/debug.log`。
+ *
+ * 要分清两件事:我们这部分(读状态 + 挂浮层)花了多久,以及挂完之后事件循环
+ * 被阻塞了多久。后者如果不是 0,代价就在宿主/终端的渲染路径上,不在扩展里。
+ */
+function debugTiming(message: string): void {
+	if (process.env.PI_IDE_DEBUG !== "1") return;
+	try {
+		appendFileSync("/tmp/pi-ide/debug.log", `${new Date().toISOString()} ${message}\n`);
+	} catch {
+		// 诊断日志失败不能影响点击
+	}
+}
 
 // ---- Starline pill API, as much of it as this file uses ----
 
@@ -185,8 +203,14 @@ export type PillDeps = {
 	/** Connect to `state`, the same path `/ide` takes. */
 	connect(ctx: ExtensionContext, state: EditorState): void;
 	disconnect(ctx: ExtensionContext): void;
-	/** Open the full `/ide` picker: the bubble lists a handful, it is not the picker. */
+	/** Open the full `/ide` picker: the bubble lists every live editor, it is not the picker. */
 	openPicker(ctx: ExtensionContext): void;
+	/**
+	 * The last polled snapshot. A click must paint from this synchronously: any
+	 * `await` in the click handler lets the host render a frame before the bubble
+	 * exists, and one frame in a long session measured at ~800 ms.
+	 */
+	snapshot(): { state: EditorState | null; live: EditorState[] };
 };
 
 /** `WebStorm · buffer.ts · line 12:3 · 4 lines selected`: the current editor in one row. */
@@ -288,24 +312,72 @@ export function registerStarlinePill(deps: PillDeps): () => void {
 	if (!api) return () => {};
 
 	return api.register(PILL_KEY, async ({ ctx, pill }) => {
-		let state: EditorState | null = null;
-		let live: EditorState[] = [];
+		const clickedAt = performance.now();
+		const cached = deps.snapshot();
+		let state: EditorState | null = cached.state;
+		let live: EditorState[] = cached.live;
 
 		// State files are external input: a failed read shows an empty bubble
 		// instead of taking the click handler down.
 		const load = async () => {
+			const startedAt = performance.now();
 			const pid = deps.connectedPid();
 			state = pid === null ? null : await deps.readState(pid).catch(() => null);
+			const readAt = performance.now();
 			live = await deps.scanLiveStates().catch(() => []);
+			// 分步计时:整段 890ms 到底落在哪一次 fs 调用上,还是两次之间被宿主插了帧
+			debugTiming(
+				`load breakdown: readState ${(readAt - startedAt).toFixed(1)}ms, scanLiveStates ${(performance.now() - readAt).toFixed(1)}ms`,
+			);
 		};
 
-		await load();
+		/**
+		 * What the bubble would draw right now. Two identical signatures mean a refresh
+		 * would cost the host a full re-render of the transcript to show the same pixels,
+		 * so the ticker skips it.
+		 */
+		const visible = () => {
+			const content = bubbleContent(state, live, deps.connectedPid(), deps, ctx);
+			return JSON.stringify([
+				content.title,
+				content.hint,
+				content.body.map((line) => (typeof line === "string" ? line : line.text)),
+			]);
+		};
+		// No `await` above this line, on purpose: anything awaited here lets the host
+		// render a frame before the bubble exists, and one frame in a long session
+		// measured at ~800 ms. The snapshot is a few seconds old at worst; the
+		// background load below corrects it.
 		const handle = api.showBubble(
 			ctx,
 			() => bubbleContent(state, live, deps.connectedPid(), deps, ctx),
 			pill,
 		);
+		const shownAt = performance.now();
+		debugTiming(
+			`pill click: showBubble ${(shownAt - clickedAt).toFixed(1)}ms, snapshot had ${cached.live.length} editors`,
+		);
 		if (!handle) return;
+
+		let lastSignature = visible();
+		void load().then(
+			() => {
+				debugTiming(`pill click: background load ${(performance.now() - shownAt).toFixed(1)}ms`);
+				const next = visible();
+				if (next === lastSignature) return;
+				lastSignature = next;
+				handle.refresh();
+			},
+			() => {},
+		);
+		// 这个 0ms 定时器如果拖很久才跑,说明挂上浮层之后事件循环被同步渲染占住了
+		setTimeout(
+			() =>
+				debugTiming(
+					`event loop free ${(performance.now() - shownAt).toFixed(1)}ms after showBubble`,
+				),
+			0,
+		);
 
 		// Cursor and selection move while the bubble is open; re-read at the same
 		// cadence the connection poll uses, without stacking slow reads.
@@ -316,6 +388,9 @@ export function registerStarlinePill(deps: PillDeps): () => void {
 			void load().then(
 				() => {
 					reading = false;
+					const next = visible();
+					if (next === lastSignature) return;
+					lastSignature = next;
 					handle.refresh();
 				},
 				() => {
