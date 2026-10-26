@@ -8,6 +8,8 @@ const GLYPHS = {
 	neovim: "\ue6ae",
 	vscode: "\uec29",
 	obsidian: "\ue6bb",
+	jetbrains: "\ue808", // dev-jetbrains, present in Maple Mono NF CN v8
+	webstorm: "\ue8e4", // dev-webstorm, same family
 	genericIde: "\ueae3",
 	typescript: "\ue8ca",
 	markdown: "\ue73e",
@@ -19,6 +21,7 @@ test("each known editor has its own mark", () => {
 	assert.equal(appIcon("nvim"), GLYPHS.neovim);
 	assert.equal(appIcon("vscode"), GLYPHS.vscode);
 	assert.equal(appIcon("obsidian"), GLYPHS.obsidian);
+	assert.equal(appIcon("jetbrains"), GLYPHS.jetbrains);
 });
 
 test("an unknown editor still gets a mark, so the pill is never blank", () => {
@@ -30,7 +33,27 @@ test("display names read as products", () => {
 	assert.equal(appName("nvim"), "Neovim");
 	assert.equal(appName("vscode"), "VS Code");
 	assert.equal(appName("obsidian"), "Obsidian");
+	assert.equal(appName("jetbrains"), "JetBrains");
 	assert.equal(appName("emacs"), "emacs");
+});
+
+test("a product wins over its app, both for the mark and the name", () => {
+	// 四个 JetBrains IDE 都报 app: "jetbrains",不区分就全叫 jetbrains。
+	assert.equal(appIcon("jetbrains", "WebStorm"), GLYPHS.webstorm);
+	assert.equal(appName("jetbrains", "WebStorm"), "WebStorm");
+	assert.equal(appIcon("jetbrains", "DataGrip"), "\ue7bd");
+	assert.equal(appIcon("jetbrains", "PyCharm"), "\ue877");
+	assert.equal(appIcon("jetbrains", "IntelliJ IDEA"), "\ue7b5");
+});
+
+test("a product name with a version or two words still resolves", () => {
+	assert.equal(appIcon("jetbrains", "WebStorm 2026.2.3"), GLYPHS.webstorm);
+	assert.equal(appIcon("jetbrains", "Android Studio 2026.1"), "\ue71a");
+});
+
+test("an unknown product falls back to the app's mark", () => {
+	assert.equal(appIcon("jetbrains", "Fleet"), GLYPHS.jetbrains);
+	assert.equal(appIcon("jetbrains", ""), GLYPHS.jetbrains);
 });
 
 test("the language id wins over the filename", () => {

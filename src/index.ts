@@ -28,7 +28,7 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { appIcon, IDE_ICON, languageIcon } from "./icons.ts";
+import { appIcon, appName, IDE_ICON, languageIcon } from "./icons.ts";
 import { registerStarlinePill } from "./starline-pill.ts";
 
 // ---- 协议类型(v0.2) ----
@@ -64,8 +64,10 @@ export interface EditorState {
 	cwd: string;
 	/** unix 秒:最后写入时刻(信息性) */
 	timestamp: number;
-	/** "nvim" | "vscode" | "obsidian" */
+	/** "nvim" | "vscode" | "obsidian" | "jetbrains" */
 	app: string;
+	/** 同一 `app` 下的具体产品,如 JetBrains 家的 "WebStorm" / "DataGrip";用于选图标和显示名 */
+	product?: string;
 	/** 启动参数(argv 去掉 argv[0]),用于区分同 cwd 下多个实例;可选 */
 	argv?: string[];
 	active_buffer: BufferState;
@@ -193,9 +195,10 @@ function padEndW(s: string, width: number): string {
 	return pad > 0 ? s + " ".repeat(pad) : s;
 }
 
-/** `/ide` 列表里的编辑器列:`  obsidian`,图标和协议里的 app id 各占一格语义。 */
+/** `/ide` 列表里的编辑器列:`  obsidian`,图标和协议里的 app id 各占一格语义。
+ *  JetBrains 家的 IDE 都报同一个 `app`,靠 `product` 分清 WebStorm / PyCharm / DataGrip。 */
 function appLabel(state: EditorState): string {
-	return `${appIcon(state.app)} ${state.app}`;
+	return `${appIcon(state.app, state.product)} ${appName(state.app, state.product)}`;
 }
 
 /**
@@ -322,7 +325,7 @@ function rebuildSelectionLineMap(ctx: ExtensionContext): void {
  */
 export function statusLine(state: EditorState): string {
 	const buf = state.active_buffer;
-	const app = appIcon(state.app);
+	const app = appIcon(state.app, state.product);
 	if (!buf.file) return app;
 	return `${app} ${languageIcon(buf.language ?? undefined, buf.file ?? undefined)}`;
 }

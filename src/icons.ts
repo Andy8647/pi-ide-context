@@ -28,7 +28,40 @@ const APP_ICONS: Record<string, string> = {
 	neovim: "\ue6ae",
 	vscode: "\uec29", // cod-vscode
 	obsidian: "\ue6bb", // custom-obsidian
+	jetbrains: "\ue808", // dev-jetbrains
 };
+
+/**
+ * Per-product marks for hosts that share one `app`. Every JetBrains IDE reports
+ * `app: "jetbrains"`, so the product name is the only thing that can tell
+ * WebStorm from DataGrip — and Nerd Fonts does carry a mark for each.
+ */
+const PRODUCT_ICONS: Record<string, string> = {
+	webstorm: "\ue8e4", // dev-webstorm
+	intellij: "\ue7b5", // dev-intellij
+	intellijidea: "\ue7b5",
+	idea: "\ue7b5",
+	pycharm: "\ue877", // dev-pycharm
+	datagrip: "\ue7bd", // dev-datagrip
+	clion: "\ue78e", // dev-clion
+	goland: "\ue7ef", // dev-goland
+	phpstorm: "\ue862", // dev-phpstorm
+	rubymine: "\ue896", // dev-rubymine
+	rider: "\ue88f", // dev-rider
+	androidstudio: "\ue71a", // dev-androidstudio
+};
+
+/**
+ * Candidate lookup keys for a product name. `"WebStorm 2026.2.3"` has a version
+ * glued on, and `"Android Studio"` is two words, so try the first token and the
+ * first two joined: `webstorm` / `androidstudio`.
+ */
+function productKeys(product: string): string[] {
+	const tokens = product.trim().toLowerCase().split(/\s+/).filter(Boolean);
+	return [tokens[0], tokens.slice(0, 2).join("")].filter(
+		(key): key is string => typeof key === "string" && key.length > 0,
+	);
+}
 
 /** Display names, because `nvim` is not how anyone writes Neovim in a bubble. */
 const APP_NAMES: Record<string, string> = {
@@ -36,6 +69,7 @@ const APP_NAMES: Record<string, string> = {
 	neovim: "Neovim",
 	vscode: "VS Code",
 	obsidian: "Obsidian",
+	jetbrains: "JetBrains",
 };
 
 const LANGUAGE_ICONS: Record<string, string> = {
@@ -125,13 +159,21 @@ const EXTENSION_ICONS: Record<string, string> = {
 	dart: "\ue798",
 };
 
-/** The editor's mark; the generic one for anything this build does not know. */
-export function appIcon(app: string): string {
+/** The editor's mark; `product` (when the client reports one) wins over `app`. */
+export function appIcon(app: string, product?: string): string {
+	if (product) {
+		for (const key of productKeys(product)) {
+			const icon = PRODUCT_ICONS[key];
+			if (icon) return icon;
+		}
+	}
 	return APP_ICONS[app] ?? IDE_ICON;
 }
 
-/** `nvim` → `Neovim`, unknowns passed through as they came. */
-export function appName(app: string): string {
+/** `nvim` → `Neovim`, `jetbrains` + `"DataGrip"` → `DataGrip`, unknowns pass through. */
+export function appName(app: string, product?: string): string {
+	const name = product?.trim();
+	if (name) return name;
 	return APP_NAMES[app] ?? app;
 }
 

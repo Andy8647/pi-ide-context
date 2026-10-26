@@ -60,14 +60,20 @@ const LIVE_TICK_MS = 1_000;
 /** Rows for other live editors; a bubble is a glance, not a picker. */
 const MAX_OTHER_ROWS = 5;
 /**
- * Starline lays the bubble out at up to 64 columns, so a row longer than this
- * wraps — and a wrapped row in a one-fact-per-line list reads as a mistake.
+ * Starline sizes the bubble to its longest row and clamps the bubble at 64 columns,
+ * drawing a 4-column frame around the body (`pillBubbleWidth` in pi-starline). So a
+ * 60-column row still fits exactly and 61 wraps — and a wrapped row in a
+ * one-fact-per-line list reads as a mistake.
  *
- * Facts are dropped in reverse order of importance (the directory first, then the
- * selection and cursor) and whatever is left is clipped from the left, which keeps
- * the tail of a filename: `…-q-learning.md` still says which note it is.
+ * Padding columns to a shared width costs a few cells per row, so this leaves as
+ * much room as the frame allows: filenames survive intact, and only the ones past
+ * that are clipped from the left (`…-q-learning.md` still says which note it is).
  */
-const MAX_ROW_WIDTH = 52;
+const MAX_ROW_WIDTH = 60;
+/** Below this the filename stops identifying anything, so the directory goes instead. */
+const MIN_FILE_WIDTH = 12;
+
+const SEPARATOR = " \u00b7 ";
 
 function textWidth(text: string): number {
 	return [...text].length;
@@ -77,26 +83,86 @@ function clip(text: string, max: number): string {
 	return textWidth(text) <= max ? text : `…${[...text].slice(-(max - 1)).join("")}`;
 }
 
-function fitRow(parts: string[], lead: string): string {
-	const SEPARATOR = " \u00b7 ";
-	// The bullet and its space count against the row: they are drawn, not metadata.
-	const budgetFor = (text: string) => MAX_ROW_WIDTH - textWidth(lead) - textWidth(text);
-	let current = [...parts];
-	if (textWidth(current.join(SEPARATOR)) > budgetFor("") && current.length > 2) {
-		// The directory goes first: the editor and the file identify the context on
-		// their own, and the path is the part that grows without bound.
-		current = [current[0] ?? "", ...current.slice(2)];
+type Row = { parts: string[]; lead: string; onSelect?: () => void };
+
+/**
+ * Bubble rows with their columns padded to a shared width, so every `·` lines up.
+ *
+ * Two phases, because alignment and fitting pull in opposite directions. First each
+ * row decides its shape — trailing extras (cursor, selection) go, and the directory
+ * only survives when a readable filename still fits next to it, since a dropped
+ * column shifts every cell after it. Then the surviving columns are padded to the
+ * widest cell in the same shape, and the filename gets whatever room is left,
+ * clipped from the left so the end of it stays readable.
+ */
+function renderBody(rows: Row[]): BubbleLine[] {
+	const budgetFor = (lead: string) => MAX_ROW_WIDTH - textWidth(lead);
+
+	// ---- shape ----
+	const shaped = rows.map((row) => {
+		const parts = [...row.parts];
+		const budget = budgetFor(row.lead);
+		let fileIndex = parts.length > 2 ? 2 : parts.length - 1;
+
+		if (parts.length > 2) {
+			// Everything but the filename, at the minimum filename width, has to fit.
+			const needed = textWidth(parts[0] ?? "") + textWidth(parts[1] ?? "") + MIN_FILE_WIDTH + 2 * 3;
+			if (needed > budget) {
+				parts.splice(1, 1);
+				fileIndex = 1;
+			}
+		}
+		while (textWidth(parts.join(SEPARATOR)) > budget && parts.length - 1 > fileIndex) {
+			parts.pop();
+		}
+		return { ...row, parts, fileIndex };
+	});
+
+	// ---- columns ----
+	// Keyed by column count: rows that lost their directory align with each other,
+	// never with the ones that kept it.
+	const widthsByShape = new Map<number, number[]>();
+	for (const row of shaped) {
+		const widths = widthsByShape.get(row.fileIndex + 1) ?? [];
+		for (let i = 0; i <= row.fileIndex; i++) {
+			widths[i] = Math.max(widths[i] ?? 0, textWidth(row.parts[i] ?? ""));
+		}
+		widthsByShape.set(row.fileIndex + 1, widths);
 	}
-	while (textWidth(current.join(SEPARATOR)) > budgetFor("") && current.length > 2) current.pop();
-	// A long filename is clipped on its own, so the editor's name survives: it is
-	// the one fact the row cannot lose.
-	if (current.length > 1 && textWidth(current.join(SEPARATOR)) > budgetFor("")) {
-		const fixed = [current[0] ?? "", ...current.slice(2)].join(SEPARATOR);
-		const budget = budgetFor(fixed) - textWidth(SEPARATOR);
-		if (budget > 8) current[1] = clip(current[1] ?? "", budget);
-	}
-	const row = current.join(SEPARATOR);
-	return `${lead}${textWidth(row) > budgetFor("") ? clip(row, budgetFor("")) : row}`;
+
+	return shaped.map((row) => {
+		const budget = budgetFor(row.lead);
+		const widths = widthsByShape.get(row.fileIndex + 1) ?? [];
+		let extras = row.parts.slice(row.fileIndex + 1);
+
+		/** The whole row with `file` in its column; `""` measures the fixed part. */
+		const draw = (file: string) => {
+			const columns = [...row.parts.slice(0, row.fileIndex), file];
+			const padded = columns.map((cell, i) =>
+				i === columns.length - 1
+					? cell
+					: cell + " ".repeat(Math.max(0, (widths[i] ?? 0) - textWidth(cell))),
+			);
+			return [...padded, ...extras].join(SEPARATOR);
+		};
+
+		const file = row.parts[row.fileIndex] ?? "";
+		let text = draw(file);
+		// Padding ate the room the extras had: they go first, they are the least fact.
+		while (textWidth(text) > budget && extras.length > 0) {
+			extras = extras.slice(0, -1);
+			text = draw(file);
+		}
+		if (textWidth(text) > budget) {
+			const room = budget - textWidth(draw(""));
+			if (room >= MIN_FILE_WIDTH) text = draw(clip(file, room));
+		}
+		// Last resort: a very long editor name and a very long filename in one row.
+		if (textWidth(text) > budget) text = clip(text, budget);
+
+		const line = `${row.lead}${text}`;
+		return row.onSelect ? { text: line, onSelect: row.onSelect } : line;
+	});
 }
 
 /** The last directory in a path, which is all a bubble row has room for. */
@@ -116,10 +182,14 @@ export type PillDeps = {
 	disconnect(ctx: ExtensionContext): void;
 };
 
-/** `buffer.ts · line 12:3 · 4 lines selected`: the current editor in one row. */
-function currentRow(state: EditorState, deps: PillDeps): string {
+/** `WebStorm · buffer.ts · line 12:3 · 4 lines selected`: the current editor in one row. */
+function currentParts(state: EditorState, deps: PillDeps): string[] {
 	const buffer = state.active_buffer;
-	const parts = [`${appIcon(state.app)} ${appName(state.app)}`, baseDir(state.cwd), buffer.name];
+	const parts = [
+		`${appIcon(state.app, state.product)} ${appName(state.app, state.product)}`,
+		baseDir(state.cwd),
+		buffer.name,
+	];
 	const cursor = buffer.cursor;
 	if (cursor && cursor.line !== null) {
 		parts.push(
@@ -131,14 +201,16 @@ function currentRow(state: EditorState, deps: PillDeps): string {
 		const lines = deps.selectedLineCount(selection);
 		parts.push(lines === null ? "selection" : `${lines} line${lines === 1 ? "" : "s"} selected`);
 	}
-	return fitRow(parts, "\u25cf ");
+	return parts;
 }
 
 /** One live editor that is not the connected one; clicking it switches over. */
-function liveRow(editor: EditorState): string {
-	const parts = [`${appIcon(editor.app)} ${appName(editor.app)}`, baseDir(editor.cwd)];
-	parts.push(editor.active_buffer.name);
-	return fitRow(parts, "\u25b8 ");
+function liveParts(editor: EditorState): string[] {
+	return [
+		`${appIcon(editor.app, editor.product)} ${appName(editor.app, editor.product)}`,
+		baseDir(editor.cwd),
+		editor.active_buffer.name,
+	];
 }
 
 /**
@@ -158,14 +230,22 @@ export function bubbleContent(
 ): BubbleContent {
 	const body: BubbleLine[] = [];
 
-	if (state) body.push(currentRow(state, deps));
+	const rows: Row[] = [];
+
+	if (state) rows.push({ parts: currentParts(state, deps), lead: "\u25cf " });
 
 	const others = live
 		.filter((editor) => editor.pid !== connectedPid)
 		.sort((a, b) => b.timestamp - a.timestamp);
 	for (const editor of others.slice(0, MAX_OTHER_ROWS)) {
-		body.push({ text: liveRow(editor), onSelect: () => deps.connect(ctx, editor) });
+		rows.push({
+			parts: liveParts(editor),
+			lead: "\u25b8 ",
+			onSelect: () => deps.connect(ctx, editor),
+		});
 	}
+
+	body.push(...renderBody(rows));
 
 	if (connectedPid !== null) {
 		body.push({ text: "✕ Disconnect", onSelect: () => deps.disconnect(ctx) });

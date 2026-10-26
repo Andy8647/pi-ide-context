@@ -211,12 +211,22 @@ describe("pickerRows", () => {
 		);
 	});
 
-	it("each row carries the editor's mark", () => {
+	it("each row carries the editor's mark and readable name", () => {
 		const rows = pickerRows(live, null);
-		// 与 pill / 气泡同一套字形:协议 id 前面加一个 Nerd Font 图标。
-		assert.ok(rows[0].includes("\uec29 vscode"), rows[0]);
-		assert.ok(rows[1].includes("\ue6ae nvim"), rows[1]);
-		assert.ok(rows[2].includes("\ue6bb obsidian"), rows[2]);
+		// 与 pill / 气泡同一套字形:图标后面跟产品显示名,不是协议 id。
+		assert.ok(rows[0].includes("\uec29 VS Code"), rows[0]);
+		assert.ok(rows[1].includes("\ue6ae Neovim"), rows[1]);
+		assert.ok(rows[2].includes("\ue6bb Obsidian"), rows[2]);
+	});
+
+	it("one app, several products: the product picks the mark and the name", () => {
+		const states = [
+			{ ...live[1], app: "jetbrains", product: "WebStorm" },
+			{ ...live[1], app: "jetbrains", product: "DataGrip" },
+		];
+		const rows = pickerRows(states, null);
+		assert.ok(rows[0].includes("\ue8e4 WebStorm"), rows[0]);
+		assert.ok(rows[1].includes("\ue7bd DataGrip"), rows[1]);
 	});
 
 	it("the connected marker keeps alignment", () => {
