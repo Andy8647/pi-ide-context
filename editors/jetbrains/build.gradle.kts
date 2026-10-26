@@ -4,6 +4,8 @@ plugins {
 	id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+
 group = "dev.andy"
 version = "0.1.0"
 
@@ -18,10 +20,19 @@ dependencies {
 	intellijPlatform {
 		// 本地迭代不必下载一整份 IDE:./gradlew buildPlugin -PlocalIdePath="/Applications/WebStorm.app"
 		val localIde = providers.gradleProperty("localIdePath").orNull
+		val localDb = providers.gradleProperty("localDatabaseIde").orNull
 		if (localIde != null) {
 			local(localIde)
 		} else {
-			intellijIdeaCommunity("2025.2.5")
+			// 编译基线必须包含 Database 插件(pi-ide-database.xml 的类都在它里),
+			// 所以默认拿 DataGrip,而不是 IDE CE。
+			create(IntelliJPlatformType.DataGrip, "2026.2.6")
+			bundledPlugin("com.intellij.database")
+		}
+		if (localIde != null && localDb == null) {
+			throw GradleException(
+				"-PlocalIdePath 需要同时给 -PlocalDatabaseIde=/Applications/DataGrip.app,否则数据库上下文编译不过",
+			)
 		}
 	}
 
@@ -29,6 +40,18 @@ dependencies {
 	// 注意:IntelliJ Platform Gradle 插件把测试任务当 JUnit4 用,所以走 junit4 变体。
 	testImplementation(kotlin("test-junit"))
 	testImplementation("junit:junit:4.13.2")
+
+	// 数据库上下文只活在某些 IDE 里(DataGrip / IDEA Ultimate),不在平台 jar 里。
+	// 开发时指向本机装的 DataGrip;CI 用下面 bundledPlugin 那一支。
+	val dbIde = providers.gradleProperty("localDatabaseIde").orNull
+	if (dbIde != null) {
+		compileOnly(
+			fileTree("$dbIde/Contents/plugins") {
+				include("DatabaseTools/lib/*.jar", "DatabaseTools/lib/modules/*.jar")
+				include("grid-*/lib/*.jar", "grid-*/lib/modules/*.jar")
+			},
+		)
+	}
 }
 
 kotlin {

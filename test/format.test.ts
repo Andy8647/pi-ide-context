@@ -99,6 +99,56 @@ describe("formatContext", () => {
 		assert.match(out, /\*\*Buffer\*\*: 200 lines/);
 	});
 
+	it("a table view drops the File line and carries the database summary", () => {
+		const grid = {
+			...state({ file: null, name: "rooms" }),
+			database: {
+				data_source: "mwac@localhost",
+				schema: "public",
+				table: "rooms",
+				primary_key: ["id"],
+				columns: [
+					{ name: "id", type: "int4" },
+					{ name: "attributes", type: "jsonb" },
+				],
+				columns_total: 42,
+				foreign_keys: [
+					{
+						columns: ["building_code"],
+						ref_table: "public.buildings",
+						ref_columns: ["code"],
+						on_delete: "CASCADE",
+					},
+				],
+				filter: "attributes ? 'office_description'",
+				row_count: 1200,
+				cell: { row: 4, column: "attributes", type: "jsonb", value: '{"a":1}' },
+			},
+		};
+
+		const out = formatContext(grid, NOW);
+
+		// 表视图没有文件,[No Name] 是噪声
+		assert.doesNotMatch(out, /\*\*File\*\*/);
+		assert.match(out, /\*\*Table\*\*: mwac@localhost \/ public \/ rooms/);
+		assert.match(out, /\*\*Primary key\*\*: id/);
+		assert.match(out, /\*\*Columns\*\*: id int4 · attributes jsonb \(\+40 more\)/);
+		assert.match(
+			out,
+			/\*\*Foreign keys\*\*: building_code → public\.buildings\(code\) on delete CASCADE/,
+		);
+		assert.match(out, /\*\*Filter\*\*: attributes \? 'office_description'/);
+		assert.match(out, /\*\*Cell\*\*: row 4 of 1200, attributes \(jsonb\) = \{"a":1\}/);
+	});
+
+	it("a NULL cell reads as NULL, not as an empty string", () => {
+		const grid = {
+			...state({ file: null }),
+			database: { table: "rooms", cell: { row: 2, column: "notes", value: null } },
+		};
+		assert.match(formatContext(grid, NOW), /\*\*Cell\*\*: row 2, notes = NULL/);
+	});
+
 	it("vault-relative file (Obsidian) is resolved against cwd", () => {
 		// Obsidian 写的是 vault 相对路径;cwd = vault 根。模型拿到相对路径只会按 pi
 		// 的 cwd 拼,所以注入前必须补全(iCloud~md~obsidian vs com~apple~CloudDocs)。

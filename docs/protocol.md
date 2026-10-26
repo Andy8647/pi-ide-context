@@ -80,9 +80,49 @@ The pi side defines one window, `SELECTION_FRESH_SECONDS = 60`:
 | `active_buffer.selection` | object \| null | See below; `null` when the user has no recent selection |
 | `active_buffer.modified` | boolean | Buffer has unsaved changes |
 | `active_buffer.lines_total` | number | Line count of the buffer |
+| `database` | object (optional) | Table view context, sent only by JetBrains clients running the Database plugin (DataGrip, IDEA Ultimate). See below |
 
 `cursor.line`/`cursor.column` may be `null` for hosts without a cursor concept;
 clients that always have one (nvim, vscode) write real values.
+
+## The `database` block (optional)
+
+A table view is not a text buffer: there is no file, no cursor, no selection text.
+The JetBrains client therefore sends a separate summary, and only when the
+Database plugin is present:
+
+```json
+"database": {
+  "table": "rooms",
+  "data_source": "mwac@localhost",
+  "schema": "public",
+  "primary_key": ["id"],
+  "columns": [{ "name": "id", "type": "int4" }],
+  "columns_total": 42,
+  "foreign_keys": [{
+    "columns": ["building_code"],
+    "ref_table": "public.buildings",
+    "ref_columns": ["code"],
+    "on_delete": "CASCADE"
+  }],
+  "filter": "attributes ? 'office_description'",
+  "row_count": 1200,
+  "cell": { "row": 4, "column": "attributes", "type": "jsonb", "value": "{\"a\":1}" }
+}
+```
+
+Rules, because this block goes straight into a prompt:
+
+- Every list is capped by the client (40 columns, 10 foreign keys). `columns`
+  carries the first N and `columns_total` the real count, so the reader knows what
+  it is missing.
+- `cell.value` is text, may be `null` (SQL NULL), and is clipped. Binary data is
+  reported as `<N bytes>` instead of being dumped.
+- Nothing here needs a database round trip: it comes from the model the IDE has
+  already introspected, so the schema half is absent for a table reached only
+  through a result set.
+- pi renders it as a compact summary (table, primary key, columns, foreign keys,
+  filter, selected cell) and drops the `File` line, which would read `[No Name]`.
 
 ### selection object
 

@@ -95,6 +95,32 @@ class EditorStateJsonTest {
 	}
 
 	@Test
+	fun `database block rides between argv and the buffer, untouched`() {
+		val state = EditorState(
+			pid = 7,
+			cwd = "/tmp",
+			timestamp = 0,
+			database = """{"table":"rooms","primary_key":["id"]}""",
+			activeBuffer = BufferState(
+				file = null,
+				name = "rooms",
+				language = null,
+				cursor = null,
+				selection = null,
+				modified = false,
+				linesTotal = 0,
+			),
+		)
+
+		// 这个块由 DataGrip / IDEA Ultimate 那一侧序列化好,这里只负责原样串进去
+		assert(
+			state.toJson().contains(
+				""""argv":[],"database":{"table":"rooms","primary_key":["id"]},"active_buffer":""",
+			),
+		) { state.toJson() }
+	}
+
+	@Test
 	fun `placeholder file types do not leak into the prompt`() {
 		assertNull(languageIdOf("TextMate"))
 		assertNull(languageIdOf("Plain Text"))

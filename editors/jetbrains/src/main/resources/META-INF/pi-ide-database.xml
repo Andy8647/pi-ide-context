@@ -1,0 +1,8 @@
+<idea-plugin>
+	<!-- Loaded only when the JetBrains "Database" plugin is installed (DataGrip,
+	     IDEA Ultimate). WebStorm / PyCharm / GoLand never load this file, so no
+	     com.intellij.database.* class is ever resolved there. -->
+	<extensions defaultExtensionNs="dev.andy.piide">
+		<databaseContext implementation="dev.andy.piide.database.DataGridContext"/>
+	</extensions>
+</idea-plugin>

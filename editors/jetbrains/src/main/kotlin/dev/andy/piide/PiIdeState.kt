@@ -47,6 +47,8 @@ internal data class EditorState(
 	val product: String? = null,
 	/** 用启动指纹同义的字段区分同 cwd 多实例:这里放「产品名 + 项目名」 */
 	val argv: List<String> = emptyList(),
+	/** 已经序列化好的 `database` 对象片段;只有 DataGrip / IDEA Ultimate 的表视图会给 */
+	val database: String? = null,
 	val activeBuffer: BufferState,
 ) {
 	fun toJson(): String = buildString(256) {
@@ -58,6 +60,7 @@ internal data class EditorState(
 		append(",\"argv\":[")
 		append(argv.joinToString(",") { "\"${escape(it)}\"" })
 		append(']')
+		if (database != null) append(",\"database\":").append(database)
 		append(",\"active_buffer\":")
 		append(activeBuffer.toJson())
 		append('}')
@@ -86,7 +89,7 @@ private fun Selection.toJson(): String = buildString(64) {
 }
 
 /** 控制字符必须转义,否则 SelectedText 里的 \u0000(U+0000)会让 pi 端 JSON.parse 直接炸 */
-private fun escape(s: String): String {
+internal fun escape(s: String): String {
 	val sb = StringBuilder(s.length + 8)
 	for (c in s) {
 		when {
@@ -122,6 +125,8 @@ internal object PiIdeState {
 			timestamp = nowSec,
 			product = productName(),
 			argv = listOfNotNull(ideFingerprint(), project.name),
+			// 表视图不是 TextEditor,光标/选区给不出来;能给的只有数据库上下文
+			database = fileEditor?.let { databaseContext(project, it) },
 			activeBuffer = buffer(file, editor, lastSelectionAt),
 		)
 	}
@@ -200,4 +205,4 @@ internal fun languageIdOf(fileTypeName: String?): String? {
 	return name.takeIf { it !in GENERIC_FILE_TYPES }
 }
 
-private val GENERIC_FILE_TYPES = setOf("textmate", "plain text", "text", "unknown")
+private val GENERIC_FILE_TYPES = setOf("textmate", "plain text", "text", "unknown", "database element")

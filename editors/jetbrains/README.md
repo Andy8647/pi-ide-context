@@ -9,12 +9,20 @@ No network, no UI, no settings.
 
 ```fish
 cd editors/jetbrains
-./gradlew buildPlugin -PlocalIdePath="/Applications/WebStorm.app"   # fast: uses an installed IDE
-./gradlew buildPlugin                                               # CI: downloads IntelliJ IDEA CE 2025.2.5
-./gradlew test                                                      # protocol JSON shape is pinned here
+# fast local loop: reuse installed IDEs, no download
+./gradlew buildPlugin -PlocalIdePath="/Applications/WebStorm.app" \
+                      -PlocalDatabaseIde="/Applications/DataGrip.app"
+./gradlew buildPlugin    # CI: downloads DataGrip 2026.2.6 for the compile baseline
+./gradlew test           # protocol JSON shape is pinned here
 ```
 
 The zip lands in `build/distributions/pi-ide-context-jetbrains-<version>.zip`.
+
+The compile baseline is **DataGrip**, not IDEA CE, because the optional database
+block needs `com.intellij.database` classes at compile time. The plugin still
+only *depends* on `com.intellij.modules.platform`: the database descriptor is an
+`<depends optional="true" config-file="pi-ide-database.xml">`, so WebStorm /
+PyCharm / GoLand never load a `com.intellij.database.*` class.
 
 First build needs a JDK 21 toolchain; the foojay resolver downloads one if the
 machine has none (~200 MB, once).
@@ -42,6 +50,19 @@ cat /tmp/pi-ide/$(pgrep -f "WebStorm.app")*.json 2>/dev/null
 The pi status pill should show the JetBrains mark (`U+E808`) plus the file's
 language mark. Moving the caret, switching files and selecting text should each
 update `timestamp` within ~200 ms.
+
+## Database context (DataGrip, IDEA Ultimate)
+
+When the selected editor is a table view, the plugin adds a `database` block to
+the state file: table, data source, schema, primary key, columns (name + type),
+foreign keys with delete rules, the current filter, and the selected cell's
+value. pi turns it into a compact summary — it is a summary, not DDL: 40 columns
+max, 10 foreign keys, a 200-character cell value, binary values as `<N bytes>`.
+
+Everything comes from the model the IDE has already introspected, so nothing
+waits on a database round trip. The flip side: a table reached only through a
+result set may have no `DasTable`, and then only the grid part (name, cell,
+filter) is sent.
 
 ## Known limitations
 

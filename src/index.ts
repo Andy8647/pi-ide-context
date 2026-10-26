@@ -58,6 +58,38 @@ interface BufferState {
 	lines_total: number;
 }
 
+/** DataGrip / IDEA Ultimate 表视图的可选上下文;其它客户端不写这个字段 */
+export interface DatabaseCell {
+	row?: number;
+	column?: string;
+	type?: string;
+	value?: string | null;
+}
+
+export interface DatabaseForeignKey {
+	columns?: string[];
+	ref_table?: string;
+	ref_columns?: string[];
+	on_delete?: string;
+}
+
+/**
+ * 表视图里能拿到的东西。刻意都是摘要:列最多 40 个、外键最多 10 条、
+ * cell 值 200 字符,否则一个三百列的表就能把 prompt 预算吃光。
+ */
+export interface DatabaseContext {
+	data_source?: string;
+	schema?: string;
+	table?: string;
+	primary_key?: string[];
+	columns?: { name: string; type?: string }[];
+	columns_total?: number;
+	foreign_keys?: DatabaseForeignKey[];
+	filter?: string;
+	row_count?: number;
+	cell?: DatabaseCell;
+}
+
 export interface EditorState {
 	pid: number;
 	/** editor 进程的 working directory(不是它打开的文件所在目录) */
@@ -70,6 +102,8 @@ export interface EditorState {
 	product?: string;
 	/** 启动参数(argv 去掉 argv[0]),用于区分同 cwd 下多个实例;可选 */
 	argv?: string[];
+	/** 表视图上下文;只有带 Database 插件的 JetBrains IDE 会写 */
+	database?: DatabaseContext;
 	active_buffer: BufferState;
 }
 
@@ -351,7 +385,9 @@ export function formatContext(state: EditorState, nowSec = Date.now() / 1000): s
 	const lines: string[] = [];
 	lines.push("### IDE Context");
 	const file = typeof buf.file === "string" ? absoluteFile(buf.file, state.cwd) : null;
-	lines.push(`- **File**: \`${file ?? "[No Name]"}\``);
+	// 表视图没有文件,写一行 "[No Name]" 只是噪声
+	if (file || !state.database) lines.push(`- **File**: \`${file ?? "[No Name]"}\``);
+	if (state.database) lines.push(...databaseLines(state.database));
 	if (buf.language) lines.push(`- **Language**: ${buf.language}`);
 	if (buf.cursor?.line != null) {
 		const col = buf.cursor.column != null ? `, column ${buf.cursor.column}` : "";
@@ -371,6 +407,48 @@ export function formatContext(state: EditorState, nowSec = Date.now() / 1000): s
 		lines.push("```");
 	}
 	return lines.join("\n");
+}
+
+/**
+ * 表视图的一行一事实。数据源 / schema / 表 合成一列,因为模型真正需要的是
+ * “这条 SQL 跑在哪”,而不是三段分开的元数据。
+ */
+function databaseLines(db: DatabaseContext): string[] {
+	const lines: string[] = [];
+
+	const table = [db.data_source, db.schema, db.table].filter(Boolean).join(" / ");
+	if (table) lines.push(`- **Table**: ${table}`);
+
+	if (db.primary_key?.length) lines.push(`- **Primary key**: ${db.primary_key.join(", ")}`);
+
+	if (db.columns?.length) {
+		const shown = db.columns.map((c) => (c.type ? `${c.name} ${c.type}` : c.name)).join(" \u00b7 ");
+		const hidden = (db.columns_total ?? db.columns.length) - db.columns.length;
+		lines.push(`- **Columns**: ${shown}${hidden > 0 ? ` (+${hidden} more)` : ""}`);
+	}
+
+	if (db.foreign_keys?.length) {
+		const keys = db.foreign_keys.map((fk) => {
+			const from = (fk.columns ?? []).join(", ");
+			const to = `${fk.ref_table ?? "?"}(${(fk.ref_columns ?? []).join(", ")})`;
+			const rule = fk.on_delete && fk.on_delete !== "NO_ACTION" ? ` on delete ${fk.on_delete}` : "";
+			return `${from} \u2192 ${to}${rule}`;
+		});
+		lines.push(`- **Foreign keys**: ${keys.join(" \u00b7 ")}`);
+	}
+
+	if (db.filter) lines.push(`- **Filter**: ${db.filter}`);
+
+	const cell = db.cell;
+	if (cell && cell.value !== undefined) {
+		const where =
+			cell.row != null ? `row ${cell.row}${db.row_count ? ` of ${db.row_count}` : ""}` : "";
+		const column = cell.column ? `${cell.column}${cell.type ? ` (${cell.type})` : ""} = ` : "";
+		const value = cell.value === null ? "NULL" : cell.value.replace(/\r?\n/g, "\u23ce");
+		lines.push(`- **Cell**: ${[where, `${column}${value}`].filter(Boolean).join(", ")}`);
+	}
+
+	return lines;
 }
 
 // ---- 连接状态 ----

@@ -15,6 +15,13 @@
 	<!-- 平台级 API only:同一份产物可装进 WebStorm / PyCharm / IDEA / DataGrip 等 -->
 	<depends>com.intellij.modules.platform</depends>
 
+	<!-- 数据库上下文只在带 Database 插件的 IDE(DataGrip / IDEA Ultimate)里加载 -->
+	<depends optional="true" config-file="pi-ide-database.xml">com.intellij.database</depends>
+
+	<extensionPoint
+		qualifiedName="dev.andy.piide.databaseContext"
+		interface="dev.andy.piide.DatabaseContextProvider"/>
+
 	<extensions defaultExtensionNs="com.intellij">
 		<postStartupActivity implementation="dev.andy.piide.PiIdeStartup"/>
 	</extensions>
