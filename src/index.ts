@@ -549,18 +549,10 @@ function connectTo(ctx: ExtensionContext, state: EditorState): void {
 	);
 }
 
-async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void> {
-	// /ide off — 断开当前连接
-	if (args === "off" || args === "disconnect") {
-		if (connectedPid === null) {
-			ctx.ui.notify("No IDE connected.", "info");
-			return;
-		}
-		disconnectIde(ctx);
-		return;
-	}
-
-	// /ide — 列出所有存活 editor(不按项目过滤),选择连接(或断开当前连接)
+/**
+ * 列出所有存活 editor 并选择连接。 `/ide` 和气泡里的「还有 N 个」行走同一条路。
+ */
+async function pickIde(ctx: ExtensionContext): Promise<void> {
 	const live = (await scanLiveStates()).sort((a, b) => b.timestamp - a.timestamp);
 	if (live.length === 0) {
 		ctx.ui.notify(
@@ -587,6 +579,20 @@ async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void>
 
 	// 立即刷新状态行,不必等下一个 tick
 	connectTo(ctx, live[idx]);
+}
+
+async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void> {
+	// /ide off — 断开当前连接
+	if (args === "off" || args === "disconnect") {
+		if (connectedPid === null) {
+			ctx.ui.notify("No IDE connected.", "info");
+			return;
+		}
+		disconnectIde(ctx);
+		return;
+	}
+
+	await pickIde(ctx);
 }
 
 // ---- 扩展入口 ----
@@ -624,6 +630,7 @@ export default function (pi: ExtensionAPI) {
 			selectedLineCount,
 			connect: connectTo,
 			disconnect: disconnectIde,
+			openPicker: (ctx) => void pickIde(ctx),
 		});
 	});
 

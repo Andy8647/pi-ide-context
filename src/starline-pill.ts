@@ -180,6 +180,8 @@ export type PillDeps = {
 	/** Connect to `state`, the same path `/ide` takes. */
 	connect(ctx: ExtensionContext, state: EditorState): void;
 	disconnect(ctx: ExtensionContext): void;
+	/** Open the full `/ide` picker: the bubble lists a handful, it is not the picker. */
+	openPicker(ctx: ExtensionContext): void;
 };
 
 /** `WebStorm · buffer.ts · line 12:3 · 4 lines selected`: the current editor in one row. */
@@ -246,6 +248,16 @@ export function bubbleContent(
 	}
 
 	body.push(...renderBody(rows));
+
+	// A bubble is a glance, so it lists a few editors — but silently hiding the rest
+	// reads as "that is all there is". The overflow row opens the real picker.
+	const hidden = others.length - MAX_OTHER_ROWS;
+	if (hidden > 0) {
+		body.push({
+			text: `\u25b8 \u2026and ${hidden} more \u00b7 /ide`,
+			onSelect: () => deps.openPicker(ctx),
+		});
+	}
 
 	if (connectedPid !== null) {
 		body.push({ text: "✕ Disconnect", onSelect: () => deps.disconnect(ctx) });

@@ -44,6 +44,7 @@ function deps(overrides: Partial<PillDeps> = {}): PillDeps {
 		selectedLineCount: () => 3,
 		connect: () => {},
 		disconnect: () => {},
+		openPicker: () => {},
 		...overrides,
 	};
 }
@@ -124,6 +125,30 @@ test("one app, several products: the bubble names the product, not the vendor", 
 	assert.equal(content.body[0], `\u25cf \ue8e4 WebStorm · proj  · main.ts · line 42:10`);
 	const row = targets(content.body).find((line) => line.text.startsWith("\u25b8"));
 	assert.equal(row?.text, `\u25b8 \ue7bd DataGrip · other · main.ts`);
+});
+
+test("a bubble lists a handful of editors, then says how many it hid", () => {
+	// /ide 会列出全部;气泡是惊鸿一瞬,列 5 个之后要说清楚还有多少个。
+	const connected = editor();
+	const others = Array.from({ length: 7 }, (_, i) =>
+		editor({ pid: 200 + i, cwd: `/Users/andy/p${i}`, timestamp: 1_700_000_000 - i }),
+	);
+	let opened = 0;
+	const content = bubbleContent(
+		connected,
+		[connected, ...others],
+		connected.pid,
+		deps({ openPicker: () => opened++ }),
+		ctx,
+	);
+
+	const switchRows = targets(content.body).filter((line) => line.text.startsWith("\u25b8"));
+	// 5 个编辑器 + 1 行溢出提示
+	assert.equal(switchRows.length, 6);
+	assert.equal(switchRows.at(-1)?.text, "\u25b8 \u2026and 2 more \u00b7 /ide");
+
+	switchRows.at(-1)?.onSelect();
+	assert.equal(opened, 1);
 });
 
 test("lists other live editors as switch targets, with their own marks", () => {
