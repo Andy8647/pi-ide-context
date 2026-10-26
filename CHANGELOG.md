@@ -9,6 +9,46 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.6.0] - 2026-10-26
+
+JetBrains IDEs, and a picker that can tell WebStorm from DataGrip.
+
+### Added
+
+- **A JetBrains client.** `editors/jetbrains/` is a Kotlin plugin for the IntelliJ
+  Platform: WebStorm, PyCharm, IDEA, DataGrip, GoLand, PhpStorm, RubyMine, CLion,
+  Rider and Android Studio all load the same artifact, because it depends on
+  `com.intellij.modules.platform` and nothing else. Install it from the release
+  zip (Settings → Plugins → ⚙ → Install Plugin from Disk) — it is not on the
+  JetBrains Marketplace yet.
+- **`product` in the protocol.** Every JetBrains IDE reports `app: "jetbrains"`, so
+  the picker showed four identical rows. The client now sends the product name too,
+  and the status glyph and row label resolve through it: eleven product marks, none
+  of which falls back to a box.
+- **DataGrip table context.** With the Database plugin present (DataGrip, IDEA
+  Ultimate), a table view sends a `database` block — table, data source, schema,
+  primary key, columns, foreign keys with their delete rules, the active filter and
+  the selected cell's value. pi renders it as a compact summary instead of DDL:
+  40 columns, 10 foreign keys, a 200-character cell, binary values as `<N bytes>`.
+  Nothing here is a database round trip; it comes from what the IDE already knows.
+- **`PI_IDE_DEBUG=1`** logs the click path's timings to `/tmp/pi-ide/debug.log`,
+  which is how the delay below was found rather than guessed.
+
+### Changed
+
+- **The bubble lists every live editor** (up to 12) instead of the first five, and
+  past the cap it says how many it hid and opens the picker.
+- **`/ide` connects without a picker when exactly one editor is live.**
+- **The picker and the bubble open instantly.** Both used to wait on a status-file
+  read; in a long session that read measured ~900 ms, which was the whole "slight
+  delay" before a bubble appeared. The click path now paints from the last polled
+  snapshot, reads the files behind it, and uses sync `fs` for them — the
+  `fs/promises` callbacks were queuing behind the event loop for that long.
+- **The bubble redraws only when something changed**, instead of forcing a full
+  re-render of the transcript every second while it is open.
+- **Bubble rows are column-aligned**, with the filename clipped from the left
+  rather than the directory column being dropped outright.
+
 ## [0.5.1] - 2026-10-25
 
 The npm card now looks like the project. No behaviour changed.

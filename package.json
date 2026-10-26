@@ -1,7 +1,7 @@
 {
 	"name": "pi-ide-context",
-	"version": "0.5.1",
-	"description": "/ide for pi — connect Neovim, VS Code or Obsidian and inject the file, cursor and selection into every prompt",
+	"version": "0.6.0",
+	"description": "/ide for pi — connect Neovim, VS Code, Obsidian or a JetBrains IDE and inject the file, cursor and selection into every prompt",
 	"keywords": [
 		"pi-package",
 		"pi-extension",
@@ -11,7 +11,11 @@
 		"obsidian",
 		"ide",
 		"editor-context",
-		"context-injection"
+		"context-injection",
+		"jetbrains",
+		"webstorm",
+		"pycharm",
+		"datagrip"
 	],
 	"author": "Andy8647",
 	"license": "MIT",

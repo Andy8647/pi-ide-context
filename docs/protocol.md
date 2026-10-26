@@ -70,7 +70,8 @@ The pi side defines one window, `SELECTION_FRESH_SECONDS = 60`:
 | `pid` | number | Editor process id; pi checks liveness with `kill(pid, 0)` |
 | `cwd` | string | The editor process's working directory (not the directory of the active file). For Obsidian it is the vault root — the base a relative `active_buffer.file` resolves against. pi uses it — together with `active_buffer.file` and `argv` — to decide which project the editor belongs to, see below |
 | `timestamp` | number | Unix seconds of last write (informational) |
-| `app` | string | Editor kind: `"nvim"`, `"vscode"`, `"obsidian"` (future) |
+| `app` | string | Editor kind: `"nvim"`, `"vscode"`, `"obsidian"`, `"jetbrains"` (all JetBrains IDEs report this one value) |
+| `product` | string (optional) | The specific product behind `app`, e.g. `"WebStorm"` / `"PyCharm"` / `"DataGrip"`. pi picks the status glyph and the `/ide` display name from it; without it every JetBrains IDE would read `jetbrains`. Unknown products fall back to the `app` mark |
 | `argv` | string[] (optional) | Launch args without argv[0], e.g. `["pi-ide-context/"]` from `nvim pi-ide-context/`. Stable per instance — disambiguates same-cwd editors. Entries may be flags, plain file names or non-existent paths; pi only counts one as project evidence when it resolves to an existing directory |
 | `active_buffer.file` | string \| null | Absolute path; relative (vault/workspace-relative) when the host has no absolute path — Obsidian writes vault-relative paths like `Notes/foo.md`. pi resolves a relative path against `cwd` **before injecting**, so the block the model sees always carries a readable absolute path. `null` for unnamed buffers |
 | `active_buffer.name` | string | Display name (basename for files) |
@@ -79,9 +80,49 @@ The pi side defines one window, `SELECTION_FRESH_SECONDS = 60`:
 | `active_buffer.selection` | object \| null | See below; `null` when the user has no recent selection |
 | `active_buffer.modified` | boolean | Buffer has unsaved changes |
 | `active_buffer.lines_total` | number | Line count of the buffer |
+| `database` | object (optional) | Table view context, sent only by JetBrains clients running the Database plugin (DataGrip, IDEA Ultimate). See below |
 
 `cursor.line`/`cursor.column` may be `null` for hosts without a cursor concept;
 clients that always have one (nvim, vscode) write real values.
+
+## The `database` block (optional)
+
+A table view is not a text buffer: there is no file, no cursor, no selection text.
+The JetBrains client therefore sends a separate summary, and only when the
+Database plugin is present:
+
+```json
+"database": {
+  "table": "rooms",
+  "data_source": "mwac@localhost",
+  "schema": "public",
+  "primary_key": ["id"],
+  "columns": [{ "name": "id", "type": "int4" }],
+  "columns_total": 42,
+  "foreign_keys": [{
+    "columns": ["building_code"],
+    "ref_table": "public.buildings",
+    "ref_columns": ["code"],
+    "on_delete": "CASCADE"
+  }],
+  "filter": "attributes ? 'office_description'",
+  "row_count": 1200,
+  "cell": { "row": 4, "column": "attributes", "type": "jsonb", "value": "{\"a\":1}" }
+}
+```
+
+Rules, because this block goes straight into a prompt:
+
+- Every list is capped by the client (40 columns, 10 foreign keys). `columns`
+  carries the first N and `columns_total` the real count, so the reader knows what
+  it is missing.
+- `cell.value` is text, may be `null` (SQL NULL), and is clipped. Binary data is
+  reported as `<N bytes>` instead of being dumped.
+- Nothing here needs a database round trip: it comes from the model the IDE has
+  already introspected, so the schema half is absent for a table reached only
+  through a result set.
+- pi renders it as a compact summary (table, primary key, columns, foreign keys,
+  filter, selected cell) and drops the `File` line, which would read `[No Name]`.
 
 ### selection object
 
@@ -129,7 +170,7 @@ changes width lives in the bubble instead.
 | Connected, unnamed buffer | editor glyph only |
 | Editor dead or disconnected | generic editor glyph (`U+EAE3`) |
 
-The glyph is chosen pi-side from `app` (`nvim`, `vscode`, `obsidian`) and
+The glyph is chosen pi-side from `app` (`nvim`, `vscode`, `obsidian`, `jetbrains`) and
 `active_buffer.language`, so the wire format is unchanged: clients keep sending
 the same fields. Language ids are what the clients already report — nvim's
 `filetype`, VS Code's `languageId`, Obsidian's `markdown` — with the filename
@@ -166,6 +207,13 @@ claim every project under it.
 - VS Code and Obsidian clients write this same JSON (see `editors/vscode/` and
   `editors/obsidian/`). The pi extension is editor-agnostic — it reads whatever
   editor wrote the file and never asks which one.
+- **JetBrains IDEs are the exception to one-file-per-process**: a single IDE
+  process hosts every open project window, so all windows share one `pid`. The
+  JetBrains client (`editors/jetbrains/`) therefore writes one file for the last
+  window the user touched, and sends `product` (`"WebStorm"`) plus
+  `argv: ["WebStorm 2026.2.3", "<project>"]` as the instance fingerprint.
+  Tracking several windows at once needs a multi-instance
+  state file name, which is not in v0.2.
 
 ## Changelog
 

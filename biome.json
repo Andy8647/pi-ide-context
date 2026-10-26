@@ -7,6 +7,10 @@
 			"!**/.git",
 			"!**/dist",
 			"!editors/obsidian/main.js",
+			"!editors/jetbrains/build",
+			"!editors/jetbrains/.gradle",
+			"!editors/jetbrains/.kotlin",
+			"!editors/jetbrains/.intellijPlatform",
 			"!test/fixtures"
 		]
 	},

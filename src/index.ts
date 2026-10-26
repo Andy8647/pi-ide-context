@@ -21,14 +21,14 @@
  * 的扩展状态行里。
  */
 
-import { readdir, readFile } from "node:fs/promises";
+import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { appIcon, IDE_ICON, languageIcon } from "./icons.ts";
+import { appIcon, appName, IDE_ICON, languageIcon } from "./icons.ts";
 import { registerStarlinePill } from "./starline-pill.ts";
 
 // ---- 协议类型(v0.2) ----
@@ -58,16 +58,52 @@ interface BufferState {
 	lines_total: number;
 }
 
+/** DataGrip / IDEA Ultimate 表视图的可选上下文;其它客户端不写这个字段 */
+export interface DatabaseCell {
+	row?: number;
+	column?: string;
+	type?: string;
+	value?: string | null;
+}
+
+export interface DatabaseForeignKey {
+	columns?: string[];
+	ref_table?: string;
+	ref_columns?: string[];
+	on_delete?: string;
+}
+
+/**
+ * 表视图里能拿到的东西。刻意都是摘要:列最多 40 个、外键最多 10 条、
+ * cell 值 200 字符,否则一个三百列的表就能把 prompt 预算吃光。
+ */
+export interface DatabaseContext {
+	data_source?: string;
+	schema?: string;
+	table?: string;
+	primary_key?: string[];
+	columns?: { name: string; type?: string }[];
+	columns_total?: number;
+	foreign_keys?: DatabaseForeignKey[];
+	filter?: string;
+	row_count?: number;
+	cell?: DatabaseCell;
+}
+
 export interface EditorState {
 	pid: number;
 	/** editor 进程的 working directory(不是它打开的文件所在目录) */
 	cwd: string;
 	/** unix 秒:最后写入时刻(信息性) */
 	timestamp: number;
-	/** "nvim" | "vscode" | "obsidian" */
+	/** "nvim" | "vscode" | "obsidian" | "jetbrains" */
 	app: string;
+	/** 同一 `app` 下的具体产品,如 JetBrains 家的 "WebStorm" / "DataGrip";用于选图标和显示名 */
+	product?: string;
 	/** 启动参数(argv 去掉 argv[0]),用于区分同 cwd 下多个实例;可选 */
 	argv?: string[];
+	/** 表视图上下文;只有带 Database 插件的 JetBrains IDE 会写 */
+	database?: DatabaseContext;
 	active_buffer: BufferState;
 }
 
@@ -78,6 +114,8 @@ const STATE_DIR = `${process.env.XDG_RUNTIME_DIR ?? join("/tmp")}/pi-ide`;
 const SELECTION_FRESH_SECONDS = 60;
 /** 连接状态轮询间隔 */
 const POLL_MS = 1000;
+/** live 列表(所有存活 editor)的扫描间隔,单位是 poll tick。 */
+const LIVE_SCAN_EVERY = 3;
 /** 聊天记录里 selection 展示的 custom entry 类型(不进 LLM context,仅展示) */
 const SELECTION_ENTRY_TYPE = "pi-ide-selection";
 /** 存进 entry 的 selection 文本上限:展示只占一行,没必要把整段选区写进 session 文件 */
@@ -85,19 +123,27 @@ const SELECTION_ENTRY_TEXT_MAX = 200;
 
 // ---- 工具 ----
 
-async function readState(pid: number): Promise<EditorState | null> {
+/**
+ * 这些状态文件只有几百字节,所以一律同步读。
+ *
+ * 实测:在长 session 里 `fs/promises` 的 `readdir` 回调能排队 ~900ms(主线程是空闲的,
+ * 0ms 定时器 30ms 就跑,只有 fs 的 promise 迟迟不 resolve),同步读同一批文件是 0.1ms。
+ * 没理由为几百字节去借线程池。
+ */
+function readState(pid: number): Promise<EditorState | null> {
 	try {
-		const raw = await readFile(join(STATE_DIR, `${pid}.json`), "utf-8");
-		return JSON.parse(raw) as EditorState;
+		return Promise.resolve(
+			JSON.parse(readFileSync(join(STATE_DIR, `${pid}.json`), "utf-8")) as EditorState,
+		);
 	} catch {
-		return null;
+		return Promise.resolve(null);
 	}
 }
 
 /** 所有存活的 editor 状态(pid 活着 + 状态文件可读),不做任何过滤 */
 async function scanLiveStates(): Promise<EditorState[]> {
 	try {
-		const entries = await readdir(STATE_DIR);
+		const entries = readdirSync(STATE_DIR);
 		const states: EditorState[] = [];
 		for (const e of entries) {
 			if (!e.endsWith(".json")) continue;
@@ -193,9 +239,10 @@ function padEndW(s: string, width: number): string {
 	return pad > 0 ? s + " ".repeat(pad) : s;
 }
 
-/** `/ide` 列表里的编辑器列:`  obsidian`,图标和协议里的 app id 各占一格语义。 */
+/** `/ide` 列表里的编辑器列:`  obsidian`,图标和协议里的 app id 各占一格语义。
+ *  JetBrains 家的 IDE 都报同一个 `app`,靠 `product` 分清 WebStorm / PyCharm / DataGrip。 */
 function appLabel(state: EditorState): string {
-	return `${appIcon(state.app)} ${state.app}`;
+	return `${appIcon(state.app, state.product)} ${appName(state.app, state.product)}`;
 }
 
 /**
@@ -322,7 +369,7 @@ function rebuildSelectionLineMap(ctx: ExtensionContext): void {
  */
 export function statusLine(state: EditorState): string {
 	const buf = state.active_buffer;
-	const app = appIcon(state.app);
+	const app = appIcon(state.app, state.product);
 	if (!buf.file) return app;
 	return `${app} ${languageIcon(buf.language ?? undefined, buf.file ?? undefined)}`;
 }
@@ -348,7 +395,9 @@ export function formatContext(state: EditorState, nowSec = Date.now() / 1000): s
 	const lines: string[] = [];
 	lines.push("### IDE Context");
 	const file = typeof buf.file === "string" ? absoluteFile(buf.file, state.cwd) : null;
-	lines.push(`- **File**: \`${file ?? "[No Name]"}\``);
+	// 表视图没有文件,写一行 "[No Name]" 只是噪声
+	if (file || !state.database) lines.push(`- **File**: \`${file ?? "[No Name]"}\``);
+	if (state.database) lines.push(...databaseLines(state.database));
 	if (buf.language) lines.push(`- **Language**: ${buf.language}`);
 	if (buf.cursor?.line != null) {
 		const col = buf.cursor.column != null ? `, column ${buf.cursor.column}` : "";
@@ -368,6 +417,48 @@ export function formatContext(state: EditorState, nowSec = Date.now() / 1000): s
 		lines.push("```");
 	}
 	return lines.join("\n");
+}
+
+/**
+ * 表视图的一行一事实。数据源 / schema / 表 合成一列,因为模型真正需要的是
+ * “这条 SQL 跑在哪”,而不是三段分开的元数据。
+ */
+function databaseLines(db: DatabaseContext): string[] {
+	const lines: string[] = [];
+
+	const table = [db.data_source, db.schema, db.table].filter(Boolean).join(" / ");
+	if (table) lines.push(`- **Table**: ${table}`);
+
+	if (db.primary_key?.length) lines.push(`- **Primary key**: ${db.primary_key.join(", ")}`);
+
+	if (db.columns?.length) {
+		const shown = db.columns.map((c) => (c.type ? `${c.name} ${c.type}` : c.name)).join(" \u00b7 ");
+		const hidden = (db.columns_total ?? db.columns.length) - db.columns.length;
+		lines.push(`- **Columns**: ${shown}${hidden > 0 ? ` (+${hidden} more)` : ""}`);
+	}
+
+	if (db.foreign_keys?.length) {
+		const keys = db.foreign_keys.map((fk) => {
+			const from = (fk.columns ?? []).join(", ");
+			const to = `${fk.ref_table ?? "?"}(${(fk.ref_columns ?? []).join(", ")})`;
+			const rule = fk.on_delete && fk.on_delete !== "NO_ACTION" ? ` on delete ${fk.on_delete}` : "";
+			return `${from} \u2192 ${to}${rule}`;
+		});
+		lines.push(`- **Foreign keys**: ${keys.join(" \u00b7 ")}`);
+	}
+
+	if (db.filter) lines.push(`- **Filter**: ${db.filter}`);
+
+	const cell = db.cell;
+	if (cell && cell.value !== undefined) {
+		const where =
+			cell.row != null ? `row ${cell.row}${db.row_count ? ` of ${db.row_count}` : ""}` : "";
+		const column = cell.column ? `${cell.column}${cell.type ? ` (${cell.type})` : ""} = ` : "";
+		const value = cell.value === null ? "NULL" : cell.value.replace(/\r?\n/g, "\u23ce");
+		lines.push(`- **Cell**: ${[where, `${column}${value}`].filter(Boolean).join(", ")}`);
+	}
+
+	return lines;
 }
 
 // ---- 连接状态 ----
@@ -406,6 +497,7 @@ function notifyOnce(
 function disconnect(ctx: ExtensionContext, reason: string) {
 	if (connectedPid === null) return;
 	connectedPid = null;
+	cachedState = null;
 	setStatus(ctx, IDE_ICON);
 	notifyOnce(ctx, `disconnect:${reason}`, reason, "info");
 }
@@ -414,12 +506,40 @@ function disconnect(ctx: ExtensionContext, reason: string) {
 // 轮询只维护已建立的连接(刷新状态行、发现 editor 死了就断开)。
 // 不做任何自动发现/自动连接:连不连、连哪个,都由 /ide 决定。
 
+/**
+ * 最近一次轮询拿到的快照。
+ *
+ * 点击要**同步**开气泡:实测宿主在我 `await` 的时候会插一帧渲染,一帧就是几百毫秒
+ * (大 session),气泡于是等在那里。所以点击路径不许有 await,先把快照画出来,
+ * 再在后台重新读盘、有变化才 refresh。
+ */
+let cachedState: EditorState | null = null;
+let cachedLive: EditorState[] = [];
+/** live 列表比单个 state 贵一条 readdir:N 次 readFile,所以隔几个 tick 扫一次。 */
+let pollsSinceLiveScan = LIVE_SCAN_EVERY;
+
+function rememberLive(states: EditorState[]): EditorState[] {
+	cachedLive = states;
+	pollsSinceLiveScan = 0;
+	return states;
+}
+
 async function pollTick() {
 	const ctx = activeCtx;
-	if (!ctx || connectedPid === null) return;
+	if (!ctx) return;
+
+	if (pollsSinceLiveScan >= LIVE_SCAN_EVERY) {
+		pollsSinceLiveScan = 0;
+		// 失败就保持旧快照:气泡先画旧数据,总比等一帧好
+		await scanLiveStates().then(rememberLive, () => {});
+	}
+	pollsSinceLiveScan++;
+
+	if (connectedPid === null) return;
 
 	const s = await readState(connectedPid);
 	if (s && pidAlive(connectedPid)) {
+		cachedState = s;
 		setStatus(ctx, statusLine(s));
 		lastLifecycleNotify = null; // 编辑器恢复后允许再次提示断连
 		return;
@@ -452,6 +572,7 @@ const DISCONNECT_CHOICE = "✕ Disconnect";
 
 function disconnectIde(ctx: ExtensionContext): void {
 	connectedPid = null;
+	cachedState = null;
 	setStatus(ctx, IDE_ICON);
 	ctx.ui.notify("Disconnected from IDE.", "info");
 }
@@ -459,6 +580,8 @@ function disconnectIde(ctx: ExtensionContext): void {
 /** 建立连接。命令行的 `/ide` 和 pill 里的切换行走同一条路。 */
 function connectTo(ctx: ExtensionContext, state: EditorState): void {
 	connectedPid = state.pid;
+	cachedState = state;
+	cachedLive = [state, ...cachedLive.filter((live) => live.pid !== state.pid)];
 	// 换了 editor 也要重发,即使文本恰好相同
 	lastStatusKey = null;
 	setStatus(ctx, statusLine(state));
@@ -466,6 +589,75 @@ function connectTo(ctx: ExtensionContext, state: EditorState): void {
 		`Connected to ${state.app} (PID ${state.pid}) — ${state.active_buffer.name}`,
 		"info",
 	);
+}
+
+/**
+ * `PI_IDE_DEBUG=1` 时把 /ide 这几步的耗时写进日志,用来分清「我们的数据」和
+ * 「宿主的渲染」——两边都不该是黑箱。
+ */
+function noteIdeTiming(message: string): void {
+	if (process.env.PI_IDE_DEBUG !== "1") return;
+	try {
+		appendFileSync("/tmp/pi-ide/debug.log", `${new Date().toISOString()} ${message}\n`);
+	} catch {
+		// 诊断日志失败不能影响命令
+	}
+}
+
+/**
+ * 列出所有存活 editor 并选择连接。 `/ide` 和气泡里的「还有 N 个」行走同一条路。
+ */
+async function pickIde(ctx: ExtensionContext): Promise<void> {
+	const startedAt = performance.now();
+	// 有快照就用快照(最多 3 秒旧):等待盘会让宿主插一帧,而一帧在大 session 上是几百毫秒。
+	const live = rememberLive(
+		(cachedLive.length > 0 ? [...cachedLive] : await scanLiveStates()).sort(
+			(a, b) => b.timestamp - a.timestamp,
+		),
+	);
+	const scannedAt = performance.now();
+	noteIdeTiming(`/ide scan: ${live.length} editors in ${(scannedAt - startedAt).toFixed(1)}ms`);
+	if (live.length === 0) {
+		ctx.ui.notify(
+			"No running editors found. Start Neovim / VS Code / Obsidian with the pi-ide client, then run /ide again.",
+			"warning",
+		);
+		return;
+	}
+
+	const choices = pickerRows(live, connectedPid);
+	// 只活一个编辑器时,没必要为一个只有一项的浮层做一次全屏重绘:用户已经明确打了 /ide。
+	// (一个都没有、或者已经连着它(还可能想断开)时,还是把选择器给他。)
+	const only = live.length === 1 ? live[0] : undefined;
+	if (only && only.pid !== connectedPid) {
+		connectTo(ctx, only);
+		return;
+	}
+	// 已连接时在末尾提供断开行:命令行的 /ide off 不总是想得起来
+	if (connectedPid !== null) choices.push(DISCONNECT_CHOICE);
+
+	const choice = await ctx.ui.select(`Select IDE to connect (${live.length} found):`, choices);
+	// 选择器已经把控制权交给 UI 了:这个 0ms 定时器如果真的 0ms 就跑,说明同步渲染
+	// 不占地;它拖了很久才跑,才是宿主渲染路径的代价。
+	setTimeout(
+		() =>
+			noteIdeTiming(
+				`event loop free ${(performance.now() - scannedAt).toFixed(1)}ms after opening the picker`,
+			),
+		0,
+	);
+	if (choice === undefined) return; // 取消
+
+	if (choice === DISCONNECT_CHOICE) {
+		disconnectIde(ctx);
+		return;
+	}
+
+	const idx = choices.indexOf(choice);
+	if (idx < 0 || idx >= live.length) return;
+
+	// 立即刷新状态行,不必等下一个 tick
+	connectTo(ctx, live[idx]);
 }
 
 async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -479,33 +671,7 @@ async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void>
 		return;
 	}
 
-	// /ide — 列出所有存活 editor(不按项目过滤),选择连接(或断开当前连接)
-	const live = (await scanLiveStates()).sort((a, b) => b.timestamp - a.timestamp);
-	if (live.length === 0) {
-		ctx.ui.notify(
-			"No running editors found. Start Neovim / VS Code / Obsidian with the pi-ide client, then run /ide again.",
-			"warning",
-		);
-		return;
-	}
-
-	const choices = pickerRows(live, connectedPid);
-	// 已连接时在末尾提供断开行:命令行的 /ide off 不总是想得起来
-	if (connectedPid !== null) choices.push(DISCONNECT_CHOICE);
-
-	const choice = await ctx.ui.select(`Select IDE to connect (${live.length} found):`, choices);
-	if (choice === undefined) return; // 取消
-
-	if (choice === DISCONNECT_CHOICE) {
-		disconnectIde(ctx);
-		return;
-	}
-
-	const idx = choices.indexOf(choice);
-	if (idx < 0 || idx >= live.length) return;
-
-	// 立即刷新状态行,不必等下一个 tick
-	connectTo(ctx, live[idx]);
+	await pickIde(ctx);
 }
 
 // ---- 扩展入口 ----
@@ -543,6 +709,8 @@ export default function (pi: ExtensionAPI) {
 			selectedLineCount,
 			connect: connectTo,
 			disconnect: disconnectIde,
+			openPicker: (ctx) => void pickIde(ctx),
+			snapshot: () => ({ state: cachedState, live: cachedLive }),
 		});
 	});
 
