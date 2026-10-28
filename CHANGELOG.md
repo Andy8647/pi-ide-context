@@ -9,7 +9,7 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
-## [Unreleased]
+## [0.6.1] - 2026-10-28
 
 ### Added
 
@@ -19,11 +19,15 @@ the diff. A tag with no section here fails the release before anything reaches n
   Excluded files contribute no context block, selection quote or selection entry.
   Rule edits take effect on the next prompt. The Starline bubble indicates when
   automatic context is excluded.
+- TeX-family status icons for `tex`, `latex`, `plaintex` and `bibtex`, with filename
+  fallbacks for `.tex`, `.ltx`, `.bib`, `.sty`, `.cls` and `.bst`.
 
 ### Fixed
 
 - Selection quotes and session metadata now use the selection actually injected,
   rather than re-reading a potentially different file after the prompt starts.
+- JetBrains database context uses the current column-type API, fixing plugin
+  compilation against recent IDE versions.
 
 ## [0.6.0] - 2026-10-26
 
