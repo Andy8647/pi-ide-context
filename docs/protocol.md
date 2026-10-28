@@ -150,6 +150,20 @@ Rules, because this block goes straight into a prompt:
 
 On every user prompt, while connected to a live editor with a real file:
 
+- First check global `<agent-dir>/ide-context.ignore` and project
+  `<pi-cwd>/.pi/ide-context.local.ignore` using gitignore syntax, in that order.
+  Project rules can add exclusions or negate global ones. Both are relative to
+  Pi's cwd. Outside Pi's cwd, only global rules apply, relative to the editor's
+  cwd (filesystem root if the file is outside that too); unresolved relative
+  paths use global rules against the reported path.
+- An excluded file contributes **no context block**, selection quote, or selection
+  metadata entry. The connection and editor-side state writing are unchanged.
+  Missing rules files mean no rules; other read failures skip injection with a
+  warning. Rules are re-read for each prompt.
+- Selection quotes and entries use the snapshot accepted for injection, not a
+  later buffer state. Changing buffers between injection and message events
+  cannot attach a different selection.
+
 - Always inject the lightweight block: file, language, cursor, buffer size/modified.
   `File` is always an absolute path: a relative `active_buffer.file` (Obsidian) is
   resolved against `cwd` first — handing the model a bare relative path makes it

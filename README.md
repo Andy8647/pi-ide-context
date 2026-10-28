@@ -137,6 +137,55 @@ needed). The `/ide` list shows each editor's directory and launch args
 apart; a bare `nvim .` shows the directory name. If the connected editor exits,
 the session disconnects with a notice — run `/ide` again to reconnect.
 
+## Exclude files from automatic context
+
+Keep the editor connected while skipping automatic context for specific files.
+Create either or both files:
+
+- **Global:** `~/.pi/agent/ide-context.ignore` (or inside `PI_CODING_AGENT_DIR`).
+- **Project:** `<pi-cwd>/.pi/ide-context.local.ignore`.
+
+Both use gitignore syntax. Global rules apply first; project rules extend them,
+including `!` exceptions. For example, in the global file:
+
+```gitignore
+.env*
+*.pem
+```
+
+And in the project file:
+
+```gitignore
+# Allow an example config, and exclude a large fixture directory.
+!.env.example
+fixtures/large/
+```
+
+Paths in both files are relative to Pi's current working directory, not the
+`.pi` directory. Files outside Pi's cwd use **only global rules**, relative to
+the connected editor's cwd; if they are outside that directory too, paths are
+relative to the filesystem root. Relative editor paths (such as Obsidian notes)
+are resolved against the editor's cwd first. For virtual vaults without an
+absolute cwd, global rules match the reported relative path.
+
+Standard gitignore directory rules apply: if you exclude `private/`, you must
+also unignore that directory before a `!private/example.txt` exception can work.
+There is no ancestor-directory search or nested ignore-file discovery.
+
+Missing files mean no rules; the extension does not create them or read your
+`.gitignore`. Rule edits apply on the next prompt without a reload or reconnect.
+If a rules file cannot be read, automatic context is skipped with a warning.
+
+For excluded files, no file/cursor/selection context is injected, and no selection
+quote or selection metadata is added to the session. The editor stays connected;
+the Starline bubble shows **Automatic context excluded**. Switching to an allowed
+file resumes injection.
+
+These rules control **automatic injection only**. They do not block agent tools
+from reading files, remove earlier context or session entries, or stop editor
+clients from writing their local state files. Project exceptions can override
+global exclusions, so global rules are defaults, not a security boundary.
+
 ## How it works
 
 ```
