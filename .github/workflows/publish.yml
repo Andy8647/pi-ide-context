@@ -149,6 +149,8 @@ jobs:
     needs: release
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
