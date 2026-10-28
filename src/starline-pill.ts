@@ -200,6 +200,7 @@ export type PillDeps = {
 	scanLiveStates(): Promise<EditorState[]>;
 	isFreshSelection(selection: Selection): boolean;
 	selectedLineCount(selection: Selection): number | null;
+	isContextExcluded(state: EditorState): boolean;
 	/** Connect to `state`, the same path `/ide` takes. */
 	connect(ctx: ExtensionContext, state: EditorState): void;
 	disconnect(ctx: ExtensionContext): void;
@@ -214,13 +215,14 @@ export type PillDeps = {
 };
 
 /** `WebStorm · buffer.ts · line 12:3 · 4 lines selected`: the current editor in one row. */
-function currentParts(state: EditorState, deps: PillDeps): string[] {
+function currentParts(state: EditorState, deps: PillDeps, excluded: boolean): string[] {
 	const buffer = state.active_buffer;
 	const parts = [
 		`${appIcon(state.app, state.product)} ${appName(state.app, state.product)}`,
 		baseDir(state.cwd),
 		buffer.name,
 	];
+	if (excluded) return parts;
 	const cursor = buffer.cursor;
 	if (cursor && cursor.line !== null) {
 		parts.push(
@@ -263,7 +265,8 @@ export function bubbleContent(
 
 	const rows: Row[] = [];
 
-	if (state) rows.push({ parts: currentParts(state, deps), lead: "\u25cf " });
+	const excluded = state !== null && deps.isContextExcluded(state);
+	if (state) rows.push({ parts: currentParts(state, deps, excluded), lead: "\u25cf " });
 
 	const others = live
 		.filter((editor) => editor.pid !== connectedPid)
@@ -277,6 +280,7 @@ export function bubbleContent(
 	}
 
 	body.push(...renderBody(rows));
+	if (excluded) body.push("Automatic context excluded");
 
 	// A bubble is a glance, so it lists a few editors — but silently hiding the rest
 	// reads as "that is all there is". The overflow row opens the real picker.

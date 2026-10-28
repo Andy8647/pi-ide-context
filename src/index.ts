@@ -23,11 +23,13 @@
 
 import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-	ExtensionContext,
+import {
+	type ExtensionAPI,
+	type ExtensionCommandContext,
+	type ExtensionContext,
+	getAgentDir,
 } from "@earendil-works/pi-coding-agent";
+import { isContextExcluded } from "./context-ignore.ts";
 import { appIcon, appName, IDE_ICON, languageIcon } from "./icons.ts";
 import { registerStarlinePill } from "./starline-pill.ts";
 
@@ -677,6 +679,25 @@ async function cmdIde(args: string, ctx: ExtensionCommandContext): Promise<void>
 // ---- 扩展入口 ----
 
 export default function (pi: ExtensionAPI) {
+	// Capture the selection actually injected, rather than reading a different
+	// buffer again when user-message events arrive.
+	let pendingSelection: SelectionEntryData | null = null;
+	const excluded = (state: EditorState, ctx: ExtensionContext): boolean => {
+		const file = state.active_buffer?.file;
+		if (!file) return false;
+		try {
+			return isContextExcluded(file, state.cwd, ctx.cwd, getAgentDir());
+		} catch (error) {
+			notifyOnce(
+				ctx,
+				`ignore:${String(error)}`,
+				`Cannot read IDE ignore rules; automatic context skipped. ${String(error)}`,
+				"warning",
+			);
+			return true;
+		}
+	};
+
 	pi.registerCommand("ide", {
 		description:
 			"Connect to a running IDE (Neovim / VS Code / Obsidian) for editor context; /ide off to disconnect",
@@ -707,6 +728,7 @@ export default function (pi: ExtensionAPI) {
 			scanLiveStates,
 			isFreshSelection,
 			selectedLineCount,
+			isContextExcluded: (state) => excluded(state, ctx),
 			connect: connectTo,
 			disconnect: disconnectIde,
 			openPicker: (ctx) => void pickIde(ctx),
@@ -724,6 +746,7 @@ export default function (pi: ExtensionAPI) {
 		lastStatusKey = null;
 		lastLifecycleNotify = null;
 		selectionLineByPrompt.clear();
+		pendingSelection = null;
 	});
 
 	// user message 渲染前把灰字行挂进盒子。transformer 每次 render 都会跑(Markdown
@@ -740,32 +763,15 @@ export default function (pi: ExtensionAPI) {
 	// message_start(role=user)时写 map。扩展事件先于 UI 派发(_handleAgentEvent:
 	// _emitExtensionEvent → _emit(UI)),所以 UserMessageComponent 构造并首次跑
 	// transformer 时,map 里已经有这条消息的灰字行了。
-	pi.on("message_start", async (event, _ctx) => {
+	pi.on("message_start", (event) => {
 		if (event.message.role !== "user") return;
-		if (connectedPid === null) return;
-
-		const state = await readState(connectedPid);
-		if (!state || !pidAlive(connectedPid)) return;
-		const buf = state.active_buffer;
-		if (!buf?.file) return;
-		const sel = buf.selection;
-		// 和注入用同一个新鲜度判据:注入给模型看过的选区,才在消息上留痕
-		if (!sel || !isFreshSelection(sel) || !sel.text.trim()) return;
-
 		const text = userTextOf(event.message);
 		if (!text) return;
-		selectionLineByPrompt.set(
-			text,
-			selectionEntryLine({
-				file: buf.name,
-				startLine: sel.start.line,
-				endLine: sel.end.line,
-				text:
-					sel.text.length > SELECTION_ENTRY_TEXT_MAX
-						? sel.text.slice(0, SELECTION_ENTRY_TEXT_MAX)
-						: sel.text,
-			}),
-		);
+		// An identical prompt must not reuse a previous, now-excluded selection.
+		selectionLineByPrompt.delete(text);
+		if (pendingSelection) {
+			selectionLineByPrompt.set(text, selectionEntryLine(pendingSelection));
+		}
 	});
 
 	// entry 只负责持久化(resume 时 rebuildSelectionLineMap 的数据源),不负责显示。
@@ -773,32 +779,16 @@ export default function (pi: ExtensionAPI) {
 	// 持久化派发;user message 在 message_end 之后落盘,同步 appendEntry 会让 entry 在
 	// session 树里排到 user message *前面*,rebuild 时归属就错了。setImmediate 推到
 	// 整个事件派发完之后,树里顺序 = user message → entry。
-	pi.on("message_end", async (event, _ctx) => {
+	pi.on("message_end", (event) => {
 		if (event.message.role !== "user") return;
-		if (connectedPid === null) return;
-
-		const state = await readState(connectedPid);
-		if (!state || !pidAlive(connectedPid)) return;
-		const buf = state.active_buffer;
-		if (!buf?.file) return;
-		const sel = buf.selection;
-		if (!sel || !isFreshSelection(sel) || !sel.text.trim()) return;
-
-		const data: SelectionEntryData = {
-			file: buf.name,
-			startLine: sel.start.line,
-			endLine: sel.end.line,
-			text:
-				sel.text.length > SELECTION_ENTRY_TEXT_MAX
-					? sel.text.slice(0, SELECTION_ENTRY_TEXT_MAX)
-					: sel.text,
-		};
-		setImmediate(() => pi.appendEntry(SELECTION_ENTRY_TYPE, data));
+		const data = pendingSelection;
+		pendingSelection = null;
+		if (data) setImmediate(() => pi.appendEntry(SELECTION_ENTRY_TYPE, data));
 	});
 
 	// 每次 prompt 注入编辑器上下文(轻量必带,selection 全文仅新鲜时)
-	// biome-ignore lint/correctness/noUnusedFunctionParameters: pi.on handler 签名需要 (event, ctx)
 	pi.on("before_agent_start", async (_event, ctx) => {
+		pendingSelection = null;
 		if (connectedPid === null) return;
 
 		const state = await readState(connectedPid);
@@ -806,6 +796,18 @@ export default function (pi: ExtensionAPI) {
 		// 状态文件是外部输入,字段可能缺失:nvim 客户端的 nil 会让整个 key 消失,
 		// 无名 buffer 的 payload 里可能根本没有 file(`file !== null` 挡不住 undefined)
 		if (!state.active_buffer?.file) return; // 无名 buffer 不注入
+		if (excluded(state, ctx)) return;
+
+		const buf = state.active_buffer;
+		const sel = buf.selection;
+		if (sel && isFreshSelection(sel) && sel.text.trim()) {
+			pendingSelection = {
+				file: buf.name,
+				startLine: sel.start.line,
+				endLine: sel.end.line,
+				text: sel.text.slice(0, SELECTION_ENTRY_TEXT_MAX),
+			};
+		}
 
 		return {
 			message: {

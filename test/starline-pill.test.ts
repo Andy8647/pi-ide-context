@@ -42,6 +42,7 @@ function deps(overrides: Partial<PillDeps> = {}): PillDeps {
 		scanLiveStates: async () => [],
 		isFreshSelection: () => true,
 		selectedLineCount: () => 3,
+		isContextExcluded: () => false,
 		connect: () => {},
 		disconnect: () => {},
 		openPicker: () => {},
@@ -98,6 +99,21 @@ test("stays inside one bubble line even for a deep path and a long name", () => 
 	assert.ok(row.includes("Neovim"));
 	assert.ok(row.endsWith(".md"), row);
 	assert.ok(row.includes("\u2026"), row);
+});
+
+test("an excluded file stays connected without advertising a selection", () => {
+	const state = editor({ active_buffer: { ...editor().active_buffer, selection: selection() } });
+	const content = bubbleContent(
+		state,
+		[state],
+		state.pid,
+		deps({ isContextExcluded: () => true }),
+		ctx,
+	);
+	assert.ok(content.body.includes("Automatic context excluded"));
+	assert.ok(!String(content.body[0]).includes("selected"));
+	assert.ok(!String(content.body[0]).includes("line 42"));
+	assert.ok(targets(content.body).some((line) => line.text === "✕ Disconnect"));
 });
 
 test("drops a stale selection", () => {
