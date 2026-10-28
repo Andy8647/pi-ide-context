@@ -14,6 +14,7 @@ const GLYPHS = {
 	typescript: "\ue8ca",
 	markdown: "\ue73e",
 	python: "\ue73c",
+	tex: "\ue69b", // seti-tex, present in Maple Mono NF CN v8
 	file: "\uea7b",
 };
 
@@ -64,6 +65,28 @@ test("the language id wins over the filename", () => {
 test("the extension is the fallback when the language is unknown or missing", () => {
 	assert.equal(languageIcon("plaintext", "/tmp/app.py"), GLYPHS.python);
 	assert.equal(languageIcon(undefined, "/tmp/README.md"), GLYPHS.markdown);
+});
+
+test("TeX, LaTeX and BibTeX language ids use the TeX mark", () => {
+	for (const language of ["tex", "latex", "plaintex", "bibtex", "LaTeX"]) {
+		assert.equal(languageIcon(language), GLYPHS.tex, language);
+	}
+	assert.equal(languageIcon("latex", "/tmp/notes.py"), GLYPHS.tex);
+	assert.equal(languageIcon("python", "/tmp/notes.tex"), GLYPHS.python);
+});
+
+test("LaTeX source, bibliography, style and class extensions use the TeX mark", () => {
+	for (const ext of ["tex", "ltx", "bib", "sty", "cls", "bst", "TEX", "BIB"]) {
+		for (const language of [undefined, "", "plaintext"]) {
+			assert.equal(languageIcon(language, `/tmp/notes.${ext}`), GLYPHS.tex, ext);
+		}
+	}
+});
+
+test("LaTeX build artifacts keep the generic file mark", () => {
+	for (const ext of ["aux", "log", "toc", "pdf"]) {
+		assert.equal(languageIcon(undefined, `/tmp/notes.${ext}`), GLYPHS.file, ext);
+	}
 });
 
 test("a file with no known language falls back to a generic file mark", () => {

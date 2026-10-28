@@ -74,6 +74,10 @@ const APP_NAMES: Record<string, string> = {
 
 const LANGUAGE_ICONS: Record<string, string> = {
 	markdown: "\ue73e", // dev-markdown
+	tex: "\ue69b", // seti-tex
+	latex: "\ue69b",
+	plaintex: "\ue69b",
+	bibtex: "\ue69b",
 	typescript: "\ue8ca", // dev-typescript
 	typescriptreact: "\ue8ca",
 	javascript: "\ue781", // dev-javascript
@@ -115,6 +119,12 @@ const LANGUAGE_ICONS: Record<string, string> = {
 const EXTENSION_ICONS: Record<string, string> = {
 	md: "\ue73e",
 	markdown: "\ue73e",
+	tex: "\ue69b",
+	ltx: "\ue69b",
+	bib: "\ue69b",
+	sty: "\ue69b",
+	cls: "\ue69b",
+	bst: "\ue69b",
 	ts: "\ue8ca",
 	tsx: "\ue8ca",
 	mts: "\ue8ca",
