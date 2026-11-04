@@ -88,11 +88,16 @@ local function get_buffer_state()
   local mode = vim.fn.mode()
   local in_visual = is_visual_mode(mode)
 
-  -- 选区:marks '< '> 反映最近一次 visual。只有「正在 visual」或本进程主动选过才报告,
+  -- 选区:正在 visual 时用 getpos("v")/getpos(".")(实时 anchor);退出后才用 marks '< '> 重建。
   -- selected_at 交给 pi 端判新鲜度——旧选区不注入、不误报。
+  --
+  -- 注意:'< 只有*离开* visual 时才会写入,而且是 buffer-local。刚打开的 buffer 里
+  -- 进 visual 时 line("'<") 还是 0,所以它只能当「非 visual 状态下有没有可重建的旧选区」
+  -- 的判据,不能挡在 visual 分支前面——挡了就会丢掉每个 buffer 的第一次选择
+  -- (进 V-LINE 后 state 里 selection 是 null,pi 侧整块 selection 都不显示)。
   local selection = nil
   local mark_lnum = vim.fn.line("'<")
-  if mark_lnum > 0 and (in_visual or last_visual_exit ~= nil) then
+  if in_visual or (mark_lnum > 0 and last_visual_exit ~= nil) then
     local a, b
     if in_visual then
       a = vim.fn.getpos("v")
