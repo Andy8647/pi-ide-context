@@ -9,6 +9,21 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.6.3] - 2026-11-04
+
+### Fixed
+
+- **JetBrains: the plugin now verifies on the IDE versions it claims to
+  support.** The declared floor was 2025.2, but the table view reads
+  `DataGridContainer`, which only exists from 2025.3. Marketplace's verifier
+  rejected the 0.6.1 and 0.6.2 uploads on IDEA 2025.2 for referencing a class
+  that is not there, so the floor is 2025.3 (build 253). 2025.3 through the
+  2026.3 release candidate verify clean.
+- **JetBrains: the custom extension point is declared where 2026.3 expects it.**
+  `<extensionPoint>` sat directly under `<idea-plugin>`; the 2026.3 parser only
+  accepts it inside `<extensionPoints>` and logged `Unknown element:
+  extensionPoint` at startup, which left the database context unregistered.
+
 ## [0.6.2] - 2026-11-04
 
 ### Fixed
