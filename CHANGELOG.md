@@ -9,6 +9,17 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.6.2] - 2026-11-04
+
+### Fixed
+
+- **Neovim: the first selection in a buffer now reaches pi.** Entering visual
+  mode (`v`, `V`, block `Ctrl-V`) in a buffer that had never had a selection
+  reported none, so the selection was missing from both the injected context and
+  the user message's quote line until you left visual mode and selected again.
+  The client no longer waits for Vim's `'<` mark, which Vim writes only when
+  visual mode is left.
+
 ## [0.6.1] - 2026-10-28
 
 ### Added
