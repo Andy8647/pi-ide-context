@@ -29,14 +29,16 @@ machine has none (~200 MB, once).
 
 `-PlocalIdePath` accepts any JetBrains IDE bundle, which is how you avoid a
 ~1 GB platform download while iterating. The committed default is
-`intellijIdeaCommunity("2025.2.5")` so CI stays hermetic.
+`DataGrip("2026.2.6")` plus the bundled `com.intellij.database`, so CI stays
+hermetic and the database block still compiles.
 
 ## Install (from disk, no Marketplace review)
 
 Settings → Plugins → ⚙ → **Install Plugin from Disk…** → pick the zip → restart
-the IDE. Works the same in every JetBrains IDE; `since-build` is `252`
-(2025.2, the compile baseline, verified by the CI-default build) with no upper
-bound. Lowering it needs `pluginVerifier` runs against the older IDE first.
+the IDE. Works the same in every JetBrains IDE; `since-build` is `253`
+(2025.3) with no upper bound. 2025.2 is not supported: the table-view class
+`DataGridContainer` only exists from 2025.3, and the Marketplace verifier
+rejects the plugin on `IU-252` for referencing it.
 
 ## Verify it works
 

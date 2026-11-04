@@ -72,8 +72,11 @@ intellijPlatform {
 
 	pluginConfiguration {
 		ideaVersion {
-			// 编译基线 2025.2(本机 IC CE / PyCharm CE);要往下放必须先跑 pluginVerifier
-			sinceBuild = "252"
+			// 编译基线 2026.2；since-build 是能装的最低版本,不是编译基线。
+			// 2025.2 装不进去:DataGridContainer 这个类 2025.3 才有,而 DataGridContext
+			// 硬引用了它,Marketplace 的 verifier 在 IU-252 上报 Class not found(CRITICAL)。
+			// 要往下放,先让那处引用不再硬绑类名,再跑 pluginVerifier 验证 252。
+			sinceBuild = "253"
 			// 不设上限:新版 IDE 直接能装
 			untilBuild = provider { null }
 		}

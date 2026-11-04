@@ -18,9 +18,13 @@
 	<!-- 数据库上下文只在带 Database 插件的 IDE(DataGrip / IDEA Ultimate)里加载 -->
 	<depends optional="true" config-file="pi-ide-database.xml">com.intellij.database</depends>
 
-	<extensionPoint
-		qualifiedName="dev.andy.piide.databaseContext"
-		interface="dev.andy.piide.DatabaseContextProvider"/>
+	<!-- 自定义 EP 必须包在 extensionPoints 里:2026.3 的 plugin.xml 解析器不接受
+	     裸挂在 <idea-plugin> 下的 <extensionPoint>,会记一条 "Unknown element"。 -->
+	<extensionPoints>
+		<extensionPoint
+			qualifiedName="dev.andy.piide.databaseContext"
+			interface="dev.andy.piide.DatabaseContextProvider"/>
+	</extensionPoints>
 
 	<extensions defaultExtensionNs="com.intellij">
 		<postStartupActivity implementation="dev.andy.piide.PiIdeStartup"/>
