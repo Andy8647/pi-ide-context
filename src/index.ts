@@ -13,12 +13,16 @@
  *   selection 文本只在新鲜(≤60s)时注入
  * - selection 展示:带着新鲜选区发出的 user message 下方追加一行灰色
  *   `↳ file:start-end · 选中内容`(custom entry,持久化但不进 LLM context)
- * - 状态行纯 ASCII:新鲜选区 "N lines selected in x.ts",否则 "in x.ts"
+ * - 状态行:两个字形(编辑器 + 文件语言)。有新鲜选区时:装了 starline 就补计数
+ *   (` 17L`,句子在编辑器顶栏),没装就写全句(` 17 lines selected in x.ts`,
+ *   pi 原生 footer 那一行有整个终端宽度)
+ * - 装了 starline 的话,编辑器顶栏右端挂那句全句(`starline-hint.ts`),
+ *   提示贴着编辑器说"这条消息会带什么"
  *
- * 状态行走 ctx.ui.setStatus("pi-ide", …),不是 widget:widget 只能画在编辑器
- * 上方/下方,而 pi-starline 的 `extensionStatuses.placements["pi-ide"] = "editor"`
- * 会把它放到编辑器右下角的 metadata 行。没装 starline 时它出现在 pi 内置 footer
- * 的扩展状态行里。
+ * 状态行走 ctx.ui.setStatus("pi-ide", …):pi 内置 footer 的扩展状态行里出现,
+ * starline 里是一段可点的 pill(starline 0.9 起只认 pill,那个“editor
+ * placement”已经没了)。编辑器旁边那句话走 starline 的 editor-hint-api,
+ * 见 starline-hint.ts。
  */
 
 import { appendFileSync, readdirSync, readFileSync } from "node:fs";
@@ -31,6 +35,12 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { isContextExcluded } from "./context-ignore.ts";
 import { appIcon, appName, IDE_ICON, languageIcon } from "./icons.ts";
+import {
+	clearSelectionHint,
+	editorHintApi,
+	publishSelectionHint,
+	selectionHintText,
+} from "./starline-hint.ts";
 import { registerStarlinePill } from "./starline-pill.ts";
 
 // ---- 协议类型(v0.2) ----
@@ -360,20 +370,33 @@ function rebuildSelectionLineMap(ctx: ExtensionContext): void {
 	}
 }
 
-// ---- 状态文本(纯 ASCII) ----
+// ---- 状态文本 ----
 
 /**
- * 状态行:连上了哪个编辑器,以及当前文件是什么语言。
+ * 状态行:连上了哪个编辑器、当前文件是什么语言;有新鲜选区时再说选了多少。
  *
- * 只放两个字形。pill 的宽度是硬约束,文件名和"选中了几行"都放进气泡——那里
- * 一次只展开一个,多占的空间不常驻。无名 buffer 也照样显示编辑器图标:pill 是
- * 常驻的,断开时也显示通用图标,让"有没有连上"一眼可见。
+ * 宽度分配看句子有没有地方说。装了 starline 时,全句在编辑器顶栏(`starline-hint.ts`),
+ * pill 只补三格计数(` 17L`);没装时 pill 是唯一通道,而 pi 原生 footer 那一行有整个
+ * 终端宽度,就写全句(` 17 lines selected in index.ts`)。文件名是这句话一半的信息,
+ * 只写计数等于没说清楚。
+ *
+ * 无名 buffer 只显示编辑器图标:pill 是常驻的,断开时也显示通用图标,让“有没有
+ * 连上”一眼可见。
  */
-export function statusLine(state: EditorState): string {
+export function statusLine(
+	state: EditorState,
+	nowSec = Date.now() / 1000,
+	opts: { words?: boolean } = {},
+): string {
 	const buf = state.active_buffer;
 	const app = appIcon(state.app, state.product);
 	if (!buf.file) return app;
-	return `${app} ${languageIcon(buf.language ?? undefined, buf.file ?? undefined)}`;
+	const language = languageIcon(buf.language ?? undefined, buf.file ?? undefined);
+	const sel = buf.selection;
+	const lines = sel && isFreshSelection(sel, nowSec) ? selectedLineCount(sel) : null;
+	if (lines === null) return `${app} ${language}`;
+	if (opts.words) return selectionHintText(state, lines) ?? `${app} ${language} ${lines}L`;
+	return `${app} ${language} ${lines}L`;
 }
 
 // ---- 格式化 LLM 上下文 ----
@@ -501,7 +524,45 @@ function disconnect(ctx: ExtensionContext, reason: string) {
 	connectedPid = null;
 	cachedState = null;
 	setStatus(ctx, IDE_ICON);
+	clearSelectionHint();
 	notifyOnce(ctx, `disconnect:${reason}`, reason, "info");
+}
+
+/**
+ * `context-ignore` 规则命中：这个文件不注入。规则文件读不出来时同样跳过上下文，
+ * 所以也返回 true——宁可少一次注入，不要拿错路径的代码去答。
+ */
+function excluded(state: EditorState, ctx: ExtensionContext): boolean {
+	const file = state.active_buffer?.file;
+	if (!file) return false;
+	try {
+		return isContextExcluded(file, state.cwd, ctx.cwd, getAgentDir());
+	} catch (error) {
+		notifyOnce(
+			ctx,
+			`ignore:${String(error)}`,
+			`Cannot read IDE ignore rules; automatic context skipped. ${String(error)}`,
+			"warning",
+		);
+		return true;
+	}
+}
+
+/**
+ * 编辑器顶栏那句话:下一个 prompt 到底会不会带上编辑器信息。
+ *
+ * 条件与 `before_agent_start` 里的一致。无名 buffer 和 ignore 掉的路径在那里就
+ * 直接 return 了,上下文根本不会注入;选区过期也就不带。提示留着一个带不上的
+ * 选区,比不提示更糟。
+ */
+function publishHintFor(state: EditorState, ctx: ExtensionContext): void {
+	const buf = state.active_buffer;
+	const sel = buf?.selection;
+	if (!buf?.file || !sel || !sel.text.trim() || !isFreshSelection(sel) || excluded(state, ctx)) {
+		publishSelectionHint(null);
+		return;
+	}
+	publishSelectionHint(selectionHintText(state, selectedLineCount(sel)));
 }
 
 // ---- 轮询 ----
@@ -542,7 +603,9 @@ async function pollTick() {
 	const s = await readState(connectedPid);
 	if (s && pidAlive(connectedPid)) {
 		cachedState = s;
-		setStatus(ctx, statusLine(s));
+		// 有 starline 时全句在编辑器顶栏,状态行只补计数;没有时状态行是唯一通道
+		setStatus(ctx, statusLine(s, undefined, { words: editorHintApi() === undefined }));
+		publishHintFor(s, ctx);
 		lastLifecycleNotify = null; // 编辑器恢复后允许再次提示断连
 		return;
 	}
@@ -576,6 +639,7 @@ function disconnectIde(ctx: ExtensionContext): void {
 	connectedPid = null;
 	cachedState = null;
 	setStatus(ctx, IDE_ICON);
+	clearSelectionHint();
 	ctx.ui.notify("Disconnected from IDE.", "info");
 }
 
@@ -586,7 +650,8 @@ function connectTo(ctx: ExtensionContext, state: EditorState): void {
 	cachedLive = [state, ...cachedLive.filter((live) => live.pid !== state.pid)];
 	// 换了 editor 也要重发,即使文本恰好相同
 	lastStatusKey = null;
-	setStatus(ctx, statusLine(state));
+	setStatus(ctx, statusLine(state, undefined, { words: editorHintApi() === undefined }));
+	publishHintFor(state, ctx);
 	ctx.ui.notify(
 		`Connected to ${state.app} (PID ${state.pid}) — ${state.active_buffer.name}`,
 		"info",
@@ -682,21 +747,6 @@ export default function (pi: ExtensionAPI) {
 	// Capture the selection actually injected, rather than reading a different
 	// buffer again when user-message events arrive.
 	let pendingSelection: SelectionEntryData | null = null;
-	const excluded = (state: EditorState, ctx: ExtensionContext): boolean => {
-		const file = state.active_buffer?.file;
-		if (!file) return false;
-		try {
-			return isContextExcluded(file, state.cwd, ctx.cwd, getAgentDir());
-		} catch (error) {
-			notifyOnce(
-				ctx,
-				`ignore:${String(error)}`,
-				`Cannot read IDE ignore rules; automatic context skipped. ${String(error)}`,
-				"warning",
-			);
-			return true;
-		}
-	};
 
 	pi.registerCommand("ide", {
 		description:
@@ -741,6 +791,7 @@ export default function (pi: ExtensionAPI) {
 		pollTimer = null;
 		unregisterPill?.();
 		unregisterPill = null;
+		clearSelectionHint();
 		activeCtx = null;
 		connectedPid = null;
 		lastStatusKey = null;

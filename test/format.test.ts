@@ -1,7 +1,7 @@
 /**
  * 状态行 / 注入上下文 / 展示工具的回归测试。
  * v0.4 起不再有项目匹配逻辑,这里只覆盖留下的纯函数:
- *   - statusLine:新鲜选区 vs 普通 buffer;无名 buffer 不占状态行
+ *   - statusLine:新鲜选区换成行数;语言图标在无(或过期)选区时回来
  *   - formatContext:轻量块必带,selection 文本只在新鲜时附上,超长截断
  *   - relTime / shortDir:展示格式
  *
@@ -65,8 +65,8 @@ function state(over: {
 }
 
 describe("statusLine", () => {
-	// 状态行只有两个字形:哪个编辑器,以及当前文件是什么语言。文件名和选区行数
-	// 都放进 pillar 的气泡里,常驻宽度只留给这两个。
+	// 状态行保持两个字形:哪个编辑器、文件语言。有新鲜选区时在后面追加行数——
+	// 它说“这条消息带不带选区”,和“在编辑什么”是两件事,不互相顶掉。
 	const NVIM = "\ue6ae";
 	const TS = "\ue8ca";
 
@@ -74,11 +74,33 @@ describe("statusLine", () => {
 		assert.equal(statusLine(state({})), `${NVIM} ${TS}`);
 	});
 
-	it("ignores the selection: the pill keeps its width", () => {
+	it("a fresh selection appends its line count to the two glyphs", () => {
 		const fresh = state({
 			selection: { text: "x", selected_at: Date.now() / 1000 - 10, startLine: 40, endLine: 45 },
 		});
-		assert.equal(statusLine(fresh), `${NVIM} ${TS}`);
+		assert.equal(statusLine(fresh), `${NVIM} ${TS} 6L`);
+	});
+
+	it("with nowhere else to say it, the status line spells the selection out", () => {
+		// 没装 starline:pill 是唯一通道,只写 6L 太干,文件名是这句话一半的信息
+		const fresh = state({
+			selection: { text: "x", selected_at: Date.now() / 1000 - 10, startLine: 40, endLine: 45 },
+		});
+		assert.equal(
+			statusLine(fresh, Date.now() / 1000, { words: true }),
+			`${NVIM} ${TS} 6 lines selected in main.ts`,
+		);
+	});
+
+	it("the long form stays short when there is nothing to report", () => {
+		assert.equal(statusLine(state({}), Date.now() / 1000, { words: true }), `${NVIM} ${TS}`);
+	});
+
+	it("a stale selection goes back to the language glyph, because nothing will carry it", () => {
+		const stale = state({
+			selection: { text: "x", selected_at: Date.now() / 1000 - 600, startLine: 40, endLine: 45 },
+		});
+		assert.equal(statusLine(stale), `${NVIM} ${TS}`);
 	});
 
 	it("unnamed buffer (no file key at all) still shows the editor", () => {

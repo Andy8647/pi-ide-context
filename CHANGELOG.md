@@ -9,6 +9,35 @@ that version's [GitHub release](https://github.com/Andy8647/pi-ide-context/relea
 notes, so write it for someone reading the releases page, not for someone reading
 the diff. A tag with no section here fails the release before anything reaches npm.
 
+## [0.6.4] - 2026-11-12
+
+### Added
+
+- **The editor's top rule says what the next message will carry.** With Starline
+  0.13 or newer, a fresh selection puts `6 lines selected in main.ts` on the right
+  end of the editor border, and the hint clears the moment it goes stale, so what
+  is on screen is exactly what the prompt carries. It rides Starline's new editor
+  hint API; without Starline nothing is published and the status glyph is the only
+  signal.
+
+### Changed
+
+- **The status line spells the selection out when nothing else can.** With
+  Starline installed the sentence `6 lines selected in patient.ts` goes on the
+  editor's top rule and the status only appends the count (`17L`); without
+  Starline the status line is the only channel with room, so it says the whole
+  thing, file name included. Before this, a fresh selection left both channels
+  silent.
+
+### Fixed
+
+- **Neovim: deleting a visual line selection no longer errors.** `GVkd`, or any
+  visual line delete whose lines the selection was anchored on, raised `attempt to
+  get length of local 'last'`, and because the error escaped the `ModeChanged`
+  callback the state file kept the selection that had just been deleted. Marks past
+  the end of the buffer are now clamped, and a range that no longer exists is
+  reported as no selection.
+
 ## [0.6.3] - 2026-11-04
 
 ### Fixed
