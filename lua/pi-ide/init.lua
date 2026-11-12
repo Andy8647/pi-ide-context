@@ -54,7 +54,8 @@ local function capture_selection(s, e, mode)
   if mode == "V" then
     -- 行选择:全行,列即整行
     local lines = vim.fn.getline(sln, eln)
-    local last = lines[#lines]
+    -- marks 被夹过之后这里仍可能是空 list(调用方之外的路径也会传越界行号)
+    local last = lines[#lines] or ""
     return lines, 1, #last
   end
 
@@ -96,6 +97,10 @@ local function get_buffer_state()
   -- 的判据,不能挡在 visual 分支前面——挡了就会丢掉每个 buffer 的第一次选择
   -- (进 V-LINE 后 state 里 selection 是 null,pi 侧整块 selection 都不显示)。
   local selection = nil
+  -- marks 可以被指向 buffer 之外:`GVkd` 删除最后两行时,退出 visual 的
+  -- ModeChanged 在删完之后才跑,'< '> 还停在已删掉的行号上(3 行 buffer 删成
+  -- 1 行,marks 仍指向第 2、3 行)。getline 越过末尾返回空 list,后面的 #last
+  -- 就会炸;夹回 buffer 范围,夹完为空就是“没有选区”。
   local mark_lnum = vim.fn.line("'<")
   if in_visual or (mark_lnum > 0 and last_visual_exit ~= nil) then
     local a, b
@@ -107,29 +112,34 @@ local function get_buffer_state()
       b = vim.fn.getpos("'>")
     end
     local s, e = ordered(a, b)
-    local mode_for_text = mode
-    if not in_visual then
-      -- 刚退出 visual:marks 仍在,用退出时刻记下的模式重建选区文本,
-      -- 这样 Esc 后切到 pi 的常见路径也能拿到精确选区(而非整行)。
-      mode_for_text = last_visual_mode or "V"
-    end
-    if mode_for_text == "\22" then
-      -- visual block:整行拉取,列为两个 anchor 的 byte 列(近似,协议注明)
-      local text_lines = vim.fn.getline(s[2], e[2])
-      selection = {
-        start = { line = s[2], column = s[3] },
-        ["end"] = { line = e[2], column = e[3] },
-        text = table.concat(text_lines, "\n"),
-      }
+    if s[2] > lines_total then
+      selection = nil
     else
-      local text_lines, sc, ec = capture_selection(s, e, mode_for_text)
-      selection = {
-        start = { line = s[2], column = sc },
-        ["end"] = { line = e[2], column = ec },
-        text = table.concat(text_lines, "\n"),
-      }
+      e[2] = math.min(e[2], lines_total)
+      local mode_for_text = mode
+      if not in_visual then
+        -- 刚退出 visual:marks 仍在,用退出时刻记下的模式重建选区文本,
+        -- 这样 Esc 后切到 pi 的常见路径也能拿到精确选区(而非整行)。
+        mode_for_text = last_visual_mode or "V"
+      end
+      if mode_for_text == "\22" then
+        -- visual block:整行拉取,列为两个 anchor 的 byte 列(近似,协议注明)
+        local text_lines = vim.fn.getline(s[2], e[2])
+        selection = {
+          start = { line = s[2], column = s[3] },
+          ["end"] = { line = e[2], column = e[3] },
+          text = table.concat(text_lines, "\n"),
+        }
+      else
+        local text_lines, sc, ec = capture_selection(s, e, mode_for_text)
+        selection = {
+          start = { line = s[2], column = sc },
+          ["end"] = { line = e[2], column = ec },
+          text = table.concat(text_lines, "\n"),
+        }
+      end
+      selection.selected_at = in_visual and os.time() or last_visual_exit
     end
-    selection.selected_at = in_visual and os.time() or last_visual_exit
   end
 
   return {
